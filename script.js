@@ -162,6 +162,7 @@ class KeywordProcessor {
         newHeaders.splice(cpcPosition + 1, 0, 'Kdroi');
         newHeaders.splice(cpcPosition + 2, 0, 'SERP');
         newHeaders.splice(cpcPosition + 3, 0, 'Google Trends');
+        newHeaders.splice(cpcPosition + 4, 0, 'Ahrefs Keyword Difficulty Checker');
 
         // 批量翻译关键词
         this.updateProgress(10, `准备翻译 ${rows.length} 个关键词...`);
@@ -197,7 +198,7 @@ class KeywordProcessor {
             const volume = parseFloat(row[volumeIndex]) || 0;
             const difficulty = parseFloat(row[difficultyIndex]) || 1;
             const cpc = parseFloat(row[cpcIndex]) || 0;
-            const kdroi = difficulty > 0 ? ((volume * cpc) / difficulty).toFixed(2) : '0.00';
+            const kdroi = difficulty > 0 ? parseFloat(((volume * cpc) / difficulty).toFixed(2)) : 0.00;
             
             // 计算CPC列在新行中的位置（考虑插入的Translation列）
             const adjustedCpcIndex = cpcIndex !== -1 ? cpcIndex + (cpcIndex > keywordIndex ? 1 : 0) : newRow.length - 4;
@@ -206,9 +207,11 @@ class KeywordProcessor {
             // 生成链接
             const serpLink = `https://www.google.com/search?q=${encodeURIComponent(keyword)}`;
             const trendsLink = `https://trends.google.com/trends/explore?q=${encodeURIComponent(keyword)}`;
+            const ahrefsLink = `https://ahrefs.com/keyword-difficulty/?country=us&input=${encodeURIComponent(keyword)}`;
             
             newRow.splice(adjustedCpcIndex + 2, 0, serpLink);
             newRow.splice(adjustedCpcIndex + 3, 0, trendsLink);
+            newRow.splice(adjustedCpcIndex + 4, 0, ahrefsLink);
             
             processedRows.push(newRow);
         }
@@ -350,6 +353,22 @@ class KeywordProcessor {
         
         // 将数据转换为工作表
         const worksheet = XLSX.utils.aoa_to_sheet(data);
+        
+        // 设置Kdroi列为数字格式
+        const headers = data[0];
+        const kdroiColIndex = headers.findIndex(h => h === 'Kdroi');
+        
+        if (kdroiColIndex !== -1) {
+            // 遍历所有行（跳过标题行）
+            for (let i = 1; i < data.length; i++) {
+                const cellAddress = XLSX.utils.encode_cell({r: i, c: kdroiColIndex});
+                if (worksheet[cellAddress]) {
+                    // 设置单元格为数字类型
+                    worksheet[cellAddress].t = 'n';
+                    worksheet[cellAddress].z = '0.00'; // 设置为两位小数格式
+                }
+            }
+        }
         
         // 添加工作表到工作簿
         XLSX.utils.book_append_sheet(workbook, worksheet, "Processed Keywords");

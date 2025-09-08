@@ -8,7 +8,8 @@
 2. **Kdroi计算**：在CPC列右侧插入Kdroi列，计算公式：Volume × CPC ÷ Keyword Difficulty，保留2位小数
 3. **SERP链接**：在Kdroi列右侧插入SERP列，包含Google搜索链接
 4. **Google Trends链接**：在SERP列右侧插入Google Trends列，包含Google Trends搜索链接
-5. **批量处理**：支持拖拽上传XLSX文件，批量处理所有关键词
+5. **Ahrefs Keyword Difficulty Checker**：在Google Trends列右侧插入Ahrefs链接，直接查询关键词难度
+6. **批量处理**：支持拖拽上传XLSX文件，批量处理所有关键词
 
 ## 使用方法
 
@@ -61,6 +62,7 @@ XLSX文件应包含以下列：
 - Kdroi：计算值 (Volume × CPC ÷ Keyword Difficulty)
 - SERP：Google搜索链接
 - Google Trends：Google Trends链接
+- Ahrefs Keyword Difficulty Checker：Ahrefs关键词难度查询链接
 
 ## 注意事项
 
