@@ -726,5 +726,10 @@ class KeywordProcessor {
 
 // 初始化应用
 document.addEventListener('DOMContentLoaded', () => {
+    // 设置弹窗尺寸
+    document.body.style.width = '700px';
+    document.body.style.height = '700px';
+    
+    // 初始化关键词处理器
     new KeywordProcessor();
 });
