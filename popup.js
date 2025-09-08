@@ -8,14 +8,21 @@ class KeywordProcessor {
     }
 
     async init() {
+        console.log('扩展初始化开始...');
+        
         // 加载保存的API配置
         this.loadApiConfig();
         
         // 设置事件监听器
         this.setupEventListeners();
         
-        // 更新配置状态显示
-        this.updateConfigStatus();
+        // 延迟更新配置状态显示，等待storage加载
+        setTimeout(() => {
+            this.updateConfigStatus();
+            console.log('API配置状态:', this.apiEndpoint ? '已配置' : '未配置');
+            console.log('API端点:', this.apiEndpoint);
+            console.log('API密钥长度:', this.apiKey ? this.apiKey.length : 0);
+        }, 1000);
     }
 
     setupEventListeners() {
@@ -315,7 +322,7 @@ class KeywordProcessor {
         ).join('\n');
 
         try {
-            const response = await fetch(this.apiEndpoint, {
+            const response = await fetch(`${this.apiEndpoint}/v1/chat/completions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -589,17 +596,23 @@ class KeywordProcessor {
     // API配置管理方法
     loadApiConfig() {
         try {
-            const endpoint = localStorage.getItem('deepseek_api_endpoint');
-            const apiKey = localStorage.getItem('deepseek_api_key');
-            
-            if (endpoint && apiKey) {
-                this.apiEndpoint = endpoint;
-                this.apiKey = apiKey;
+            // 使用chrome.storage.local替代localStorage
+            chrome.storage.local.get(['deepseek_api_endpoint', 'deepseek_api_key'], (result) => {
+                const endpoint = result.deepseek_api_endpoint;
+                const apiKey = result.deepseek_api_key;
                 
-                // 填充到表单
-                document.getElementById('apiEndpoint').value = endpoint;
-                document.getElementById('apiKey').value = apiKey;
-            }
+                if (endpoint && apiKey) {
+                    this.apiEndpoint = endpoint;
+                    this.apiKey = apiKey;
+                    
+                    // 填充到表单
+                    document.getElementById('apiEndpoint').value = endpoint;
+                    document.getElementById('apiKey').value = apiKey;
+                }
+                
+                // 更新状态显示
+                this.updateConfigStatus();
+            });
         } catch (error) {
             console.error('加载API配置失败:', error);
         }
@@ -617,18 +630,20 @@ class KeywordProcessor {
         }
         
         try {
-            // 保存到localStorage
-            localStorage.setItem('deepseek_api_endpoint', endpoint);
-            localStorage.setItem('deepseek_api_key', apiKey);
-            
-            // 更新实例变量
-            this.apiEndpoint = endpoint;
-            this.apiKey = apiKey;
-            
-            // 更新状态显示
-            this.updateConfigStatus();
-            
-            this.showSuccess('API配置保存成功！');
+            // 保存到chrome.storage.local
+            chrome.storage.local.set({
+                'deepseek_api_endpoint': endpoint,
+                'deepseek_api_key': apiKey
+            }, () => {
+                // 更新实例变量
+                this.apiEndpoint = endpoint;
+                this.apiKey = apiKey;
+                
+                // 更新状态显示
+                this.updateConfigStatus();
+                
+                this.showSuccess('API配置保存成功！');
+            });
         } catch (error) {
             this.showError('保存配置失败: ' + error.message);
         }
@@ -636,22 +651,21 @@ class KeywordProcessor {
 
     clearApiConfig() {
         try {
-            // 清除localStorage
-            localStorage.removeItem('deepseek_api_endpoint');
-            localStorage.removeItem('deepseek_api_key');
-            
-            // 清除表单
-            document.getElementById('apiEndpoint').value = '';
-            document.getElementById('apiKey').value = '';
-            
-            // 清除实例变量
-            this.apiEndpoint = '';
-            this.apiKey = '';
-            
-            // 更新状态显示
-            this.updateConfigStatus();
-            
-            this.showSuccess('API配置已清除');
+            // 清除chrome.storage.local
+            chrome.storage.local.remove(['deepseek_api_endpoint', 'deepseek_api_key'], () => {
+                // 清除表单
+                document.getElementById('apiEndpoint').value = '';
+                document.getElementById('apiKey').value = '';
+                
+                // 清除实例变量
+                this.apiEndpoint = '';
+                this.apiKey = '';
+                
+                // 更新状态显示
+                this.updateConfigStatus();
+                
+                this.showSuccess('API配置已清除');
+            });
         } catch (error) {
             this.showError('清除配置失败: ' + error.message);
         }

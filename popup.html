@@ -7,16 +7,21 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
+            margin: 0;
+            padding: 15px;
             background-color: white;
-            padding: 30px;
+            box-sizing: border-box;
+            overflow: auto;
+            width: 700px;
+            height: 700px;
             border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        /* 直接在body中显示内容，去掉多余的container */
+        body > * {
+            max-width: 100%;
+            box-sizing: border-box;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
         h1 {
             text-align: center;
@@ -26,10 +31,12 @@
         .upload-area {
             border: 2px dashed #ccc;
             border-radius: 8px;
-            padding: 30px;
+            padding: 40px;
             text-align: center;
-            margin-bottom: 10px;
+            margin-bottom: 20px;
             transition: border-color 0.3s;
+            width: 100%;
+            box-sizing: border-box;
         }
         .upload-area:hover {
             border-color: #007bff;
@@ -44,7 +51,7 @@
         .upload-btn {
             background-color: #007bff;
             color: white;
-            padding: 5px 20px;
+            padding: 10px 20px;
             border: none;
             border-radius: 4px;
             cursor: pointer;
@@ -56,6 +63,7 @@
         .progress {
             margin: 20px 0;
             display: none;
+            width: 100%;
         }
         .progress-bar {
             width: 100%;
@@ -75,6 +83,7 @@
             justify-content: space-between;
             align-items: center;
             margin-top: 10px;
+            width: 100%;
         }
         
         .progress-text {
@@ -99,6 +108,7 @@
         .result {
             margin-top: 20px;
             display: none;
+            width: 100%;
         }
         .download-btn {
             background-color: #28a745;
@@ -118,6 +128,8 @@
             color: #dc3545;
             margin-top: 10px;
             display: none;
+            width: 100%;
+            box-sizing: border-box;
         }
         
         .api-config {
@@ -126,6 +138,8 @@
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
+            width: 100%;
+            box-sizing: border-box;
         }
         
         .api-config h3 {
@@ -133,7 +147,23 @@
             color: #495057;
             display: flex;
             align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+        }
+        
+        .api-config h3 .left-content {
+            display: flex;
+            align-items: center;
             gap: 8px;
+            flex: 1;
+        }
+        
+        .api-config h3 .config-buttons {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            justify-content: flex-end;
         }
         
         .config-form {
@@ -157,6 +187,10 @@
             border: 1px solid #ced4da;
             border-radius: 4px;
             font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+            max-width: 100%;
+            min-width: 0;
         }
         
         .form-group input:focus {
@@ -170,32 +204,23 @@
             border: 1px solid #b3d9ff;
             border-radius: 4px;
             padding: 12px;
-            margin-top: 15px;
+            margin: 15px 0;
             font-size: 13px;
             color: #004085;
+            width: 100%;
+            box-sizing: border-box;
         }
         
-        .security-tips h4 {
-            margin-top: 0;
-            color: #004085;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        .security-tips ul {
-            margin: 8px 0 0 0;
-            padding-left: 20px;
-        }
-        
-        .security-tips li {
-            margin-bottom: 4px;
+        .security-tips p {
+            margin: 0;
+            line-height: 1.4;
         }
         
         .config-buttons {
             display: flex;
             gap: 10px;
-            margin-top: 5px;
+            margin-top: 0;
+            width: 100%;
         }
         
         .config-status {
@@ -227,20 +252,39 @@
             font-size: 14px;
         }
         
+        /* 统一配置按钮的大小 */
+        #saveConfigBtn {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+        
         .btn-secondary:hover {
             background-color: #5a6268;
+        }
+        
+        /* 确保所有按钮都不溢出 */
+        button {
+            max-width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>关键词工具</h1>
+    <h1>关键词工具</h1>
         
         <!-- API配置区域 -->
         <div class="api-config" id="apiConfig">
             <h3>
-                🔑 API配置设置
-                <span class="config-status" id="configStatus">未配置</span>
+                <div class="left-content">
+                    🔑 API配置设置
+                    <span class="config-status" id="configStatus">未配置</span>
+                </div>
+                <div class="config-buttons">
+                    <button class="upload-btn" id="saveConfigBtn">保存配置</button>
+                    <button class="btn-secondary" id="clearConfigBtn">清除配置</button>
+                </div>
             </h3>
             
             <div class="config-form">
@@ -255,29 +299,8 @@
                 </div>
                 
                 <div class="security-tips">
-                    <h4>🔒 安全提示</h4>
-                    <ul>
-                        <li>您的API密钥仅保存在本地浏览器中</li>
-                        <li>不会上传到任何服务器，无泄露风险</li>
-                        <li>其他用户无法访问您的密钥</li>
-                        <li>清除浏览器数据后会删除保存的配置</li>
-                    </ul>
+                    <p>🔒 安全提示：您的API密钥仅保存在本地浏览器中，不会上传到服务器，其他用户无法访问，清除浏览器数据后会自动删除。</p>
                 </div>
-                
-                <div class="config-buttons">
-                    <button class="upload-btn" id="saveConfigBtn">保存配置</button>
-                    <button class="btn-secondary" id="clearConfigBtn">清除配置</button>
-                </div>
-            </div>
-        </div>
-        
-        <div class="upload-area" id="uploadArea">
-            <div>
-                <p>点击选择XLSX文件或拖拽文件到此处</p>
-                <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
-                    选择文件
-                </button>
-                <input type="file" id="fileInput" accept=".xlsx" />
             </div>
         </div>
         
@@ -298,10 +321,26 @@
             </button>
         </div>
         
+        <div class="upload-area" id="uploadArea">
+            <div>
+                <p>点击选择XLSX文件或拖拽文件到此处</p>
+                <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                    选择文件
+                </button>
+                <input type="file" id="fileInput" accept=".xlsx" />
+            </div>
+        </div>
+        
         <div class="error" id="error"></div>
-    </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js"></script>
-</body>
+    <script src="xlsx.full.min.js"></script>
+    <script src="popup.js"></script>
+    <script>
+        // 设置更大的弹窗尺寸
+        document.addEventListener('DOMContentLoaded', () => {
+            document.body.style.width = '1400px';
+            document.body.style.height = '900px';
+        });
+    </script>
+  </body>
 </html>

@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "关键词工具 - Keyword Tool",
+  "version": "1.0.0",
+  "description": "强大的关键词处理工具，支持翻译、Kdroi计算和多平台链接生成",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://api.deepseek.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "关键词工具"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
