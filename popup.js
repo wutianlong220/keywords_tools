@@ -29,11 +29,18 @@ class KeywordProcessor {
         const fileInput = document.getElementById('fileInput');
         const uploadArea = document.getElementById('uploadArea');
         const stopBtn = document.getElementById('stopBtn');
+        const selectFileBtn = document.getElementById('selectFileBtn');
 
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 this.processFile(e.target.files[0]);
             }
+        });
+
+        // 选择文件按钮点击事件
+        selectFileBtn.addEventListener('click', () => {
+            console.log('选择文件按钮被点击了');
+            fileInput.click();
         });
 
         // 拖拽上传
