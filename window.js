@@ -441,8 +441,17 @@ class KeywordProcessor {
     
     updateProgress(current, total) {
         const percentage = Math.round((current / total) * 100);
-        document.getElementById('progressBar').style.width = `${percentage}%`;
-        document.getElementById('progressText').textContent = `正在处理: ${current}/${total}`;
+        const progressBar = document.getElementById('progressBar');
+
+        progressBar.style.width = `${percentage}%`;
+
+        if (percentage === 100) {
+            progressBar.style.background = 'linear-gradient(90deg, #28a745 0%, #20c997 100%)';
+            document.getElementById('progressText').textContent = '处理完毕';
+        } else {
+            progressBar.style.background = 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)';
+            document.getElementById('progressText').textContent = `正在处理: ${current}/${total}`;
+        }
     }
 
     async downloadMergedFile() {
