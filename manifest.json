@@ -4,13 +4,14 @@
   "version": "2.0.0",
   "description": "强大的关键词批量处理工具，支持多文件处理、翻译、Kdroi计算和多平台链接生成",
   "permissions": [
-    "storage"
+    "storage",
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://api.deepseek.com/*"
   ],
   "action": {
-    "default_popup": "popup.html",
     "default_title": "关键词工具"
   },
   "background": {
