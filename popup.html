@@ -269,6 +269,246 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
+        /* 批量处理相关样式 */
+        .batch-controls {
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        .batch-process-btn {
+            background-color: #28a745;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .batch-process-btn:hover:not(:disabled) {
+            background-color: #218838;
+        }
+
+        .batch-process-btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .file-list {
+            margin: 15px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+
+        .file-list h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .file-name {
+            font-weight: 500;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .file-size {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .file-status {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 500;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .status-pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .status-processing {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-completed {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status-failed {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .batch-progress {
+            margin: 15px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+
+        .batch-progress h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .batch-progress .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .batch-progress .progress-fill {
+            height: 100%;
+            background-color: #28a745;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .batch-progress .progress-text {
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+        }
+
+        .batch-result {
+            margin: 15px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+
+        .batch-result h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 16px;
+        }
+
+        .batch-result p {
+            margin: 5px 0;
+            color: #666;
+        }
+
+        .error-details {
+            color: #dc3545;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        /* 响应式布局优化 */
+        @media (max-width: 650px) {
+            body {
+                width: 100%;
+                height: 100vh;
+                padding: 10px;
+            }
+
+            .file-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .file-status {
+                align-self: flex-end;
+            }
+
+            .batch-controls {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .batch-process-btn {
+                width: 100%;
+            }
+        }
+
+        /* 大量文件的滚动优化 */
+        .file-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .file-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .file-list::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        .file-list::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+
+        .file-list::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        /* 文件数量过多时的样式优化 */
+        .file-count-info {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        /* 批量处理中的状态优化 */
+        .processing-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -327,13 +567,34 @@
                 <button class="upload-btn" id="selectFileBtn">
                     选择文件
                 </button>
-                <input type="file" id="fileInput" accept=".xlsx" />
+                <input type="file" id="fileInput" accept=".xlsx" multiple />
             </div>
         </div>
-        
+
+        <!-- 批量处理按钮 -->
+        <div class="batch-controls" id="batchControls" style="display: none;">
+            <button class="batch-process-btn" id="batchProcessBtn" disabled>开始批量处理</button>
+        </div>
+
+        <!-- 文件列表显示区域 -->
+        <div class="file-list" id="fileList" style="display: none;">
+            <h3>待处理文件</h3>
+            <div id="selectedFiles"></div>
+        </div>
+
+        <!-- 批量进度显示区域 -->
+        <div class="batch-progress" id="batchProgress" style="display: none;">
+            <h4>批量处理进度</h4>
+            <div class="progress-bar">
+                <div class="progress-fill" id="batchProgressFill"></div>
+            </div>
+            <div class="progress-text" id="batchProgressText">0/0</div>
+        </div>
+
         <div class="error" id="error"></div>
 
     <script src="xlsx.full.min.js"></script>
+    <script src="jszip.min.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

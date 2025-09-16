@@ -4,6 +4,10 @@ class KeywordProcessor {
         this.apiKey = '';
         this.isProcessing = false;
         this.shouldStop = false;
+        this.selectedFiles = [];
+        this.processedFiles = [];
+        this.failedFiles = [];
+        this.batchMode = false;
         this.init();
     }
 
@@ -30,10 +34,12 @@ class KeywordProcessor {
         const uploadArea = document.getElementById('uploadArea');
         const stopBtn = document.getElementById('stopBtn');
         const selectFileBtn = document.getElementById('selectFileBtn');
+        const batchProcessBtn = document.getElementById('batchProcessBtn');
 
+        // 多文件选择事件
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
-                this.processFile(e.target.files[0]);
+                this.handleFileSelection(e.target.files);
             }
         });
 
@@ -43,7 +49,7 @@ class KeywordProcessor {
             fileInput.click();
         });
 
-        // 拖拽上传
+        // 拖拽上传（支持多文件）
         uploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
             uploadArea.classList.add('dragover');
@@ -57,8 +63,13 @@ class KeywordProcessor {
             e.preventDefault();
             uploadArea.classList.remove('dragover');
             if (e.dataTransfer.files.length > 0) {
-                this.processFile(e.dataTransfer.files[0]);
+                this.handleFileSelection(e.dataTransfer.files);
             }
+        });
+
+        // 批量处理按钮
+        batchProcessBtn.addEventListener('click', () => {
+            this.startBatchProcessing();
         });
 
         // 停止按钮
@@ -69,13 +80,20 @@ class KeywordProcessor {
         // API配置相关事件
         const saveConfigBtn = document.getElementById('saveConfigBtn');
         const clearConfigBtn = document.getElementById('clearConfigBtn');
-        
+
         saveConfigBtn.addEventListener('click', () => {
             this.saveApiConfig();
         });
 
         clearConfigBtn.addEventListener('click', () => {
             this.clearApiConfig();
+        });
+
+        // 事件委托：处理动态创建的下载按钮
+        document.addEventListener('click', (e) => {
+            if (e.target.matches('[data-action="download-zip"]')) {
+                this.downloadAllFilesAsZip();
+            }
         });
     }
 
@@ -276,8 +294,8 @@ class KeywordProcessor {
 
             console.log(`需要翻译 ${keywordsToTranslate.length} 个关键词`);
 
-            // 分批处理，每批20个关键词
-            const batchSize = 20;
+            // 分批处理，每批1000个关键词
+            const batchSize = 1000;
             const totalBatches = Math.ceil(keywordsToTranslate.length / batchSize);
             const results = new Map();
 
@@ -558,10 +576,11 @@ class KeywordProcessor {
         });
     }
 
-    showProgress() {
+    showProgress(message = '处理中...') {
         document.getElementById('progress').style.display = 'block';
         document.getElementById('result').style.display = 'none';
         document.getElementById('error').style.display = 'none';
+        document.getElementById('progressText').textContent = message;
     }
 
     hideProgress() {
@@ -580,6 +599,10 @@ class KeywordProcessor {
 
     showResult() {
         document.getElementById('result').style.display = 'block';
+    }
+
+    hideResult() {
+        document.getElementById('result').style.display = 'none';
     }
 
     stopProcessing() {
@@ -729,6 +752,677 @@ class KeywordProcessor {
             }
         }, 3000);
     }
+
+    // ==================== 多文件选择和批量处理相关方法 ====================
+
+    handleFileSelection(files) {
+        // 过滤只保留.xlsx文件
+        this.selectedFiles = Array.from(files).filter(file =>
+            file.name.toLowerCase().endsWith('.xlsx')
+        );
+
+        console.log(`选择了 ${this.selectedFiles.length} 个XLSX文件`);
+
+        if (this.selectedFiles.length === 0) {
+            this.showError('请选择XLSX文件');
+            return;
+        }
+
+        this.updateFileList();
+        this.updateBatchProcessButton();
+        this.showBatchControls();
+    }
+
+    updateFileList() {
+        const container = document.getElementById('selectedFiles');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        this.selectedFiles.forEach((file, index) => {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            fileItem.innerHTML = `
+                <div class="file-info">
+                    <div class="file-name">${file.name}</div>
+                    <div class="file-size">${this.formatFileSize(file.size)}</div>
+                </div>
+                <div class="file-status status-pending" id="file-${index}-status">等待处理</div>
+            `;
+            container.appendChild(fileItem);
+        });
+    }
+
+    updateBatchProcessButton() {
+        const batchProcessBtn = document.getElementById('batchProcessBtn');
+        if (!batchProcessBtn) return;
+
+        const hasFiles = this.selectedFiles.length > 0;
+        const isProcessing = this.isProcessing;
+
+        batchProcessBtn.disabled = !hasFiles || isProcessing;
+
+        if (hasFiles) {
+            batchProcessBtn.textContent = `处理 ${this.selectedFiles.length} 个文件`;
+        } else {
+            batchProcessBtn.textContent = '开始批量处理';
+        }
+    }
+
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    showBatchControls() {
+        const batchControls = document.getElementById('batchControls');
+        const fileList = document.getElementById('fileList');
+
+        if (batchControls) batchControls.style.display = 'block';
+        if (fileList) fileList.style.display = 'block';
+    }
+
+    hideBatchControls() {
+        const batchControls = document.getElementById('batchControls');
+        const fileList = document.getElementById('fileList');
+
+        if (batchControls) batchControls.style.display = 'none';
+        if (fileList) fileList.style.display = 'none';
+    }
+
+    // ==================== 批量处理核心方法 ====================
+
+    async startBatchProcessing() {
+        if (this.selectedFiles.length === 0) {
+            this.showError('请先选择要处理的文件');
+            return;
+        }
+
+        // 检查API配置
+        if (!this.apiEndpoint || !this.apiKey) {
+            this.showError('请先配置API密钥和地址<br><br>1. 在"API配置设置"区域输入您的API信息<br>2. 点击"保存配置"<br>3. 然后再开始批量处理');
+            // 高亮显示API配置区域
+            const apiConfig = document.getElementById('apiConfig');
+            if (apiConfig) {
+                apiConfig.style.border = '2px solid #dc3545';
+                apiConfig.scrollIntoView({ behavior: 'smooth' });
+                setTimeout(() => {
+                    apiConfig.style.border = '';
+                }, 3000);
+            }
+            return;
+        }
+
+        this.batchMode = true;
+        this.isProcessing = true;
+        this.shouldStop = false;
+        this.processedFiles = [];
+        this.failedFiles = [];
+
+        this.updateUIForBatchProcessing();
+        this.showBatchProgress();
+
+        try {
+            // 依次处理每个文件
+            for (let i = 0; i < this.selectedFiles.length; i++) {
+                if (this.shouldStop) break;
+
+                const file = this.selectedFiles[i];
+                await this.processSingleFileInBatch(file, i);
+            }
+
+            // 批量处理完成
+            await this.completeBatchProcessing();
+
+        } catch (error) {
+            console.error('批量处理错误:', error);
+            this.showError('批量处理过程中发生错误: ' + error.message);
+        } finally {
+            this.isProcessing = false;
+            this.batchMode = false;
+            this.updateUIForIdle();
+        }
+    }
+
+    async processSingleFileInBatch(file, fileIndex) {
+        this.updateFileStatus(fileIndex, 'processing', '处理中...');
+
+        try {
+            console.log(`开始处理文件: ${file.name} (索引: ${fileIndex})`);
+
+            // 读取文件并获取原始关键词数量
+            const xlsxData = await this.readXLSX(file);
+            const originalKeywordCount = xlsxData.length - 1; // 减去表头
+
+            // 提取词根
+            const wordRoot = this.extractWordRoot(file.name);
+
+            // 修改processFile方法支持批量模式
+            const result = await this.processXLSXData(xlsxData);
+
+            this.processedFiles.push({
+                file: file,
+                data: result,
+                index: fileIndex,
+                originalKeywordCount: originalKeywordCount,
+                wordRoot: wordRoot
+            });
+
+            this.updateFileStatus(fileIndex, 'completed', '已完成');
+            console.log(`文件处理成功: ${file.name}，关键词数量: ${originalKeywordCount}，词根: ${wordRoot}`);
+
+        } catch (error) {
+            console.error(`文件处理失败: ${file.name}`, error);
+            this.failedFiles.push({
+                file: file,
+                error: error.message,
+                index: fileIndex
+            });
+
+            this.updateFileStatus(fileIndex, 'failed', '处理失败');
+        }
+
+        this.updateBatchProgress();
+    }
+
+    extractWordRoot(fileName) {
+        // 从文件名中提取词根
+        // 示例: builder_broad-match_us_2025-09-15.xlsx -> builder
+        const nameWithoutExt = fileName.replace('.xlsx', '').replace('.xls', '');
+        const parts = nameWithoutExt.split('_');
+
+        // 返回第一个部分作为词根
+        return parts[0] || '未知';
+    }
+
+    async processFileInBatchMode(file, fileIndex) {
+        if (!file.name.toLowerCase().endsWith('.xlsx')) {
+            throw new Error('请选择XLSX文件');
+        }
+
+        try {
+            const xlsxData = await this.readXLSX(file);
+
+            // 检查是否要停止
+            if (this.shouldStop) {
+                throw new Error('USER_STOPPED');
+            }
+
+            const processedData = await this.processXLSXData(xlsxData);
+
+            // 检查是否要停止
+            if (this.shouldStop) {
+                throw new Error('USER_STOPPED');
+            }
+
+            return processedData;
+
+        } catch (error) {
+            console.error('处理文件时出错:', error);
+            if (this.shouldStop) {
+                throw new Error('USER_STOPPED');
+            } else {
+                throw error;
+            }
+        }
+    }
+
+    updateFileStatus(fileIndex, status, text) {
+        const statusElement = document.getElementById(`file-${fileIndex}-status`);
+        if (statusElement) {
+            statusElement.className = `file-status status-${status}`;
+            statusElement.textContent = text;
+        }
+    }
+
+    updateUIForBatchProcessing() {
+        const batchProcessBtn = document.getElementById('batchProcessBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        if (batchProcessBtn) {
+            batchProcessBtn.disabled = true;
+            batchProcessBtn.textContent = '批量处理中...';
+        }
+
+        if (stopBtn) {
+            stopBtn.disabled = false;
+        }
+
+        // 隐藏单文件处理相关的UI
+        this.hideProgress();
+        this.hideResult();
+    }
+
+    updateUIForIdle() {
+        const batchProcessBtn = document.getElementById('batchProcessBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        if (batchProcessBtn) {
+            batchProcessBtn.disabled = false;
+            this.updateBatchProcessButton();
+        }
+
+        if (stopBtn) {
+            stopBtn.disabled = true;
+        }
+
+        this.hideBatchProgress();
+    }
+
+    showBatchProgress() {
+        const batchProgress = document.getElementById('batchProgress');
+        if (batchProgress) {
+            batchProgress.style.display = 'block';
+        }
+        this.updateBatchProgress();
+    }
+
+    hideBatchProgress() {
+        const batchProgress = document.getElementById('batchProgress');
+        if (batchProgress) {
+            batchProgress.style.display = 'none';
+        }
+    }
+
+    updateBatchProgress() {
+        const completed = this.processedFiles.length + this.failedFiles.length;
+        const total = this.selectedFiles.length;
+        const percentage = total > 0 ? (completed / total) * 100 : 0;
+
+        const progressFill = document.getElementById('batchProgressFill');
+        const progressText = document.getElementById('batchProgressText');
+
+        if (progressFill) {
+            progressFill.style.width = `${percentage}%`;
+        }
+
+        if (progressText) {
+            progressText.textContent = `${completed}/${total}`;
+        }
+    }
+
+    async completeBatchProcessing() {
+        const successCount = this.processedFiles.length;
+        const failCount = this.failedFiles.length;
+
+        // 显示处理结果（优先显示，让用户知道处理结果）
+        this.showBatchResult(successCount, failCount);
+
+        // 不再自动下载，等待用户点击下载按钮
+    }
+
+    addDownloadErrorToResult() {
+        const existingResult = document.querySelector('.batch-result');
+        if (existingResult) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-details';
+            errorDiv.innerHTML = '⚠️ 批量下载失败，但所有文件已成功处理。您可以手动下载每个文件。';
+            existingResult.appendChild(errorDiv);
+        }
+    }
+
+    showBatchResult(successCount, failCount) {
+        // 移除之前的结果
+        const existingResult = document.querySelector('.batch-result');
+        if (existingResult) {
+            existingResult.remove();
+        }
+
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'batch-result';
+
+        let resultHTML = `
+            <h3>批量处理完成</h3>
+            <p>✅ 成功处理: ${successCount} 个文件</p>
+            <p>❌ 处理失败: ${failCount} 个文件</p>
+        `;
+
+        if (failCount > 0) {
+            resultHTML += `<div class="error-details">失败文件: ${this.failedFiles.map(f => f.file.name).join(', ')}</div>`;
+        }
+
+        if (successCount > 0) {
+            resultHTML += `
+                <div class="download-section" style="margin-top: 15px;">
+                    <button class="download-btn" id="downloadAllBtn" data-action="download-zip">
+                        📥 下载合并后的Excel文件 (包含所有数据)
+                    </button>
+                </div>
+            `;
+        }
+
+        resultDiv.innerHTML = resultHTML;
+
+        // 插入到错误信息前面
+        const errorDiv = document.getElementById('error');
+        if (errorDiv) {
+            errorDiv.parentNode.insertBefore(resultDiv, errorDiv);
+        } else {
+            document.querySelector('.container')?.appendChild(resultDiv);
+        }
+    }
+
+    // retryDownload方法已废弃，用户直接点击下载按钮即可
+
+    showProcessedFilesList() {
+        let message = '已成功处理的文件：\n\n';
+        this.processedFiles.forEach((file, index) => {
+            message += `${index + 1}. ${file.file.name}\n`;
+        });
+
+        if (this.failedFiles.length > 0) {
+            message += '\n处理失败的文件：\n';
+            this.failedFiles.forEach((file, index) => {
+                message += `${index + 1}. ${file.file.name} - ${file.error}\n`;
+            });
+        }
+
+        this.showSuccess(message);
+    }
+
+    // ==================== 批量下载功能 ====================
+
+    async downloadAllFilesAsZip() {
+        if (this.processedFiles.length === 0) {
+            this.showError('没有可下载的文件');
+            return;
+        }
+
+        try {
+            this.showProgress('正在合并Excel文件...');
+
+            // 创建合并的工作簿
+            const mergedWorkbook = await this.createMergedWorkbook();
+
+            // 下载合并后的文件
+            const excelBuffer = await this.writeWorkbookToBuffer(mergedWorkbook);
+            this.downloadExcelFile(excelBuffer, `关键词工具_批量处理结果_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+            this.hideProgress();
+            this.showSuccess(`✅ 文件已下载！包含 ${this.processedFiles.length} 个文件的所有数据`);
+
+        } catch (error) {
+            console.error('合并文件失败:', error);
+            this.hideProgress();
+            this.showError('合并文件失败: ' + error.message);
+        }
+    }
+
+    async createMergedWorkbook() {
+        // 创建新的工作簿
+        const mergedWorkbook = XLSX.utils.book_new();
+
+        // 添加总览sheet（包含使用说明）
+        const overviewData = [
+            ['文件名', '词根', '原始关键词数量', '处理后行数', '处理状态', '处理时间'],
+            ...this.processedFiles.map((file, index) => [
+                file.file.name,
+                file.wordRoot || '未知',
+                file.originalKeywordCount || 0,
+                file.data.length - 1, // 减去表头
+                '处理成功',
+                new Date().toLocaleString('zh-CN')
+            ])
+        ];
+
+        // 添加使用说明在右侧（从I列开始）
+        const instructionsStartCol = 8; // I列
+
+        // 确保有足够的行来容纳使用说明（表头+文件数据+23行使用说明）
+        const requiredRows = overviewData.length + 23;
+        while (overviewData.length < requiredRows) {
+            overviewData.push([]);
+        }
+
+        // 为所有行填充空值（到H列结束）
+        for (let i = 0; i < overviewData.length; i++) {
+            while (overviewData[i].length <= instructionsStartCol) {
+                overviewData[i].push('');
+            }
+        }
+
+        // 添加使用说明到I列
+        overviewData[0][instructionsStartCol] = '关键词工具 - 批量处理结果';
+        overviewData[1][instructionsStartCol] = '';
+        overviewData[2][instructionsStartCol] = '使用说明：';
+        overviewData[3][instructionsStartCol] = '1. 每个 sheet 对应一个原始文件的数据';
+        overviewData[4][instructionsStartCol] = '2. "总览" sheet 显示所有文件的处理情况';
+        overviewData[5][instructionsStartCol] = '3. 所有关键词都已翻译并计算了 Kdroi 值';
+        overviewData[6][instructionsStartCol] = '4. 生成了各个平台的链接';
+        overviewData[7][instructionsStartCol] = '';
+        overviewData[8][instructionsStartCol] = '列说明：';
+        overviewData[9][instructionsStartCol] = 'Keyword: 原始关键词';
+        overviewData[10][instructionsStartCol] = 'Translation: 中文翻译';
+        overviewData[11][instructionsStartCol] = 'Intent: 搜索意图';
+        overviewData[12][instructionsStartCol] = 'Volume: 搜索量';
+        overviewData[13][instructionsStartCol] = 'Keyword Difficulty: 关键词难度';
+        overviewData[14][instructionsStartCol] = 'CPC (USD): 每次点击成本';
+        overviewData[15][instructionsStartCol] = 'Kdroi: 投资回报率 (Volume × CPC ÷ Difficulty)';
+        overviewData[16][instructionsStartCol] = 'SERP: Google搜索链接';
+        overviewData[17][instructionsStartCol] = 'Google Trends: 趋势链接';
+        overviewData[18][instructionsStartCol] = 'Ahrefs: Ahrefs查询链接';
+        overviewData[19][instructionsStartCol] = '';
+        overviewData[20][instructionsStartCol] = `生成时间：${new Date().toLocaleString('zh-CN')}`;
+        overviewData[21][instructionsStartCol] = `文件数量：${this.processedFiles.length.toString()}`;
+        overviewData[22][instructionsStartCol] = `总关键词数：${this.processedFiles.reduce((sum, file) => sum + (file.originalKeywordCount || 0), 0).toString()}`;
+
+        const overviewSheet = XLSX.utils.aoa_to_sheet(overviewData);
+
+        // 设置总览sheet的列宽
+        overviewSheet['!cols'] = [
+            { wch: 40 },  // 文件名
+            { wch: 15 },  // 词根
+            { wch: 12 },  // 原始关键词数量
+            { wch: 12 },  // 处理后行数
+            { wch: 12 },  // 处理状态
+            { wch: 20 },  // 处理时间
+            { wch: 5 },   // 空列分隔
+            { wch: 40 }   // 使用说明
+        ];
+
+        XLSX.utils.book_append_sheet(mergedWorkbook, overviewSheet, '总览');
+
+        // 为每个文件创建一个sheet
+        for (let i = 0; i < this.processedFiles.length; i++) {
+            const processedFile = this.processedFiles[i];
+
+            // 生成sheet名称（使用文件名，去除特殊字符）
+            const sheetName = this.generateValidSheetName(processedFile.file.name, i);
+
+            // 创建sheet
+            const worksheet = XLSX.utils.aoa_to_sheet(processedFile.data);
+
+            // 设置列宽
+            if (!worksheet['!cols']) {
+                worksheet['!cols'] = [
+                    { wch: 30 }, // Keyword
+                    { wch: 30 }, // Translation
+                    { wch: 15 }, // Intent
+                    { wch: 12 }, // Volume
+                    { wch: 15 }, // Keyword Difficulty
+                    { wch: 12 }, // CPC (USD)
+                    { wch: 12 }, // Kdroi
+                    { wch: 50 }, // SERP
+                    { wch: 50 }, // Google Trends
+                    { wch: 50 }  // Ahrefs
+                ];
+            }
+
+            // 添加到工作簿
+            XLSX.utils.book_append_sheet(mergedWorkbook, worksheet, sheetName);
+        }
+
+        return mergedWorkbook;
+    }
+
+    generateValidSheetName(fileName, index) {
+        // 去除文件扩展名
+        let name = fileName.replace('.xlsx', '').replace('.xls', '');
+
+        // 限制长度（Excel sheet名称最多31个字符）
+        if (name.length > 25) {
+            name = name.substring(0, 25);
+        }
+
+        // 移除特殊字符
+        name = name.replace(/[\\/*?:[\]]/g, '');
+
+        // 如果为空或过短，使用默认名称
+        if (!name || name.length < 2) {
+            name = `文件${index + 1}`;
+        }
+
+        return name;
+    }
+
+    async createBatchDownload() {
+        // 已废弃的方法，直接调用新的合并下载方法
+        await this.downloadAllFilesAsZip();
+    }
+
+    async loadJSZip() {
+        // JSZip is now loaded locally, just check if it's available
+        if (typeof JSZip === 'undefined') {
+            throw new Error('JSZip library not loaded');
+        }
+        return Promise.resolve();
+    }
+
+    createWorkbookFromData(data) {
+        const worksheet = XLSX.utils.aoa_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+        return workbook;
+    }
+
+    downloadExcelFile(buffer, fileName) {
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `processed_${fileName}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    
+    async writeWorkbookToBuffer(workbook) {
+        return new Promise((resolve, reject) => {
+            try {
+                const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+                resolve(buffer);
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    // ==================== 修改原有方法以支持批量处理 ====================
+
+    async processFile(file, autoDownload = true) {
+        if (!file.name.toLowerCase().endsWith('.xlsx')) {
+            this.showError('请选择XLSX文件');
+            return;
+        }
+
+        // 检查API配置
+        if (!this.apiEndpoint || !this.apiKey) {
+            this.showError('请先配置API密钥');
+            return;
+        }
+
+        // 重置停止状态
+        this.shouldStop = false;
+        this.isProcessing = true;
+
+        this.showProgress();
+        this.updateProgress(0, '读取文件...');
+
+        try {
+            const xlsxData = await this.readXLSX(file);
+
+            // 检查是否要停止
+            if (this.shouldStop) {
+                this.hideProgress();
+                this.showError('处理已停止');
+                return;
+            }
+
+            this.updateProgress(10, '处理数据...');
+
+            const processedData = await this.processXLSXData(xlsxData);
+
+            // 检查是否要停止
+            if (this.shouldStop) {
+                this.hideProgress();
+                this.showError('处理已停止');
+                return;
+            }
+
+            this.updateProgress(90, '生成文件...');
+
+            const processedXLSX = this.generateXLSX(processedData);
+
+            if (autoDownload) {
+                this.enableDownload(processedXLSX, file.name);
+                this.updateProgress(100, '处理完成！');
+                setTimeout(() => this.hideProgress(), 1000);
+                this.showResult();
+            } else {
+                // 批量模式，直接返回处理后的数据
+                return processedData;
+            }
+
+        } catch (error) {
+            console.error('处理文件时出错:', error);
+            if (this.shouldStop) {
+                this.showError('处理已停止');
+            } else {
+                this.showError('处理文件时出错: ' + error.message);
+            }
+            this.hideProgress();
+        } finally {
+            this.isProcessing = false;
+        }
+    }
+
+    generateXLSX(data) {
+        const worksheet = XLSX.utils.aoa_to_sheet(data);
+
+        // 设置Kdroi列为数字格式
+        const range = XLSX.utils.decode_range(worksheet['!ref']);
+        for (let row = range.s.r + 1; row <= range.e.r; row++) {
+            for (let col = range.s.c; col <= range.e.c; col++) {
+                const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+                const cell = worksheet[cellAddress];
+
+                // 检查是否是Kdroi列
+                if (row === range.s.r + 1) { // 第一行是表头
+                    const headerRow = data[0];
+                    if (headerRow[col] === 'Kdroi') {
+                        // 为整个Kdroi列设置数字格式
+                        for (let dataRow = range.s.r + 1; dataRow <= range.e.r; dataRow++) {
+                            const dataCellAddress = XLSX.utils.encode_cell({ r: dataRow, c: col });
+                            const dataCell = worksheet[dataCellAddress];
+                            if (dataCell && !isNaN(dataCell.v)) {
+                                dataCell.z = '#,##0.00'; // 设置数字格式，保留两位小数
+                                dataCell.t = 'n'; // 确保类型为数字
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+        return workbook;
+    }
 }
 
 // 初始化应用
@@ -736,7 +1430,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 设置弹窗尺寸
     document.body.style.width = '700px';
     document.body.style.height = '700px';
-    
-    // 初始化关键词处理器
-    new KeywordProcessor();
+
+    // 初始化关键词处理器并暴露到全局
+    window.keywordProcessor = new KeywordProcessor();
 });
