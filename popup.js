@@ -8,6 +8,13 @@ class KeywordProcessor {
         this.processedFiles = [];
         this.failedFiles = [];
         this.batchMode = false;
+
+        // 并发处理核心常量
+        this.BATCH_SIZE = 80;           // 每批关键词数量
+        this.CONCURRENCY_LIMIT = 5;     // 并发数量
+        this.REQUEST_TIMEOUT = 30000;   // 请求超时时间
+        this.MAX_RETRIES = 2;           // 最大重试次数
+
         this.init();
     }
 
@@ -272,13 +279,13 @@ class KeywordProcessor {
             return [];
         }
 
-        console.log(`批量翻译 ${keywords.length} 个关键词`);
+        console.log(`并发批量翻译 ${keywords.length} 个关键词`);
 
         try {
-            // 所有关键词都需要翻译成中文
+            // 过滤需要翻译的关键词
             const keywordsToTranslate = [];
             const translationMap = new Map();
-            
+
             keywords.forEach((keyword, index) => {
                 if (!keyword || !keyword.trim()) {
                     translationMap.set(index, '');
@@ -288,52 +295,91 @@ class KeywordProcessor {
             });
 
             if (keywordsToTranslate.length === 0) {
-                console.log('所有关键词都是中文，无需翻译');
+                console.log('所有关键词都是空，无需翻译');
                 return keywords.map((keyword, index) => translationMap.get(index) || keyword);
             }
 
-            console.log(`需要翻译 ${keywordsToTranslate.length} 个关键词`);
+            console.log(`需要翻译 ${keywordsToTranslate.length} 个关键词，使用并发处理`);
 
-            // 分批处理，每批1000个关键词
-            const batchSize = 1000;
-            const totalBatches = Math.ceil(keywordsToTranslate.length / batchSize);
-            const results = new Map();
+            // 计算总批次数
+            const totalBatches = Math.ceil(keywordsToTranslate.length / this.BATCH_SIZE);
+            console.log(`总共分为 ${totalBatches} 批，每批 ${this.BATCH_SIZE} 个关键词，并发数 ${this.CONCURRENCY_LIMIT}`);
 
-            for (let i = 0; i < keywordsToTranslate.length; i += batchSize) {
+            // 初始化结果数组
+            const finalTranslations = new Array(keywords.length);
+
+            // 先填充空关键词和映射的结果
+            for (let i = 0; i < keywords.length; i++) {
+                if (translationMap.has(i)) {
+                    finalTranslations[i] = translationMap.get(i);
+                }
+            }
+
+            // 并发处理所有批次
+            for (let batchGroup = 0; batchGroup < totalBatches; batchGroup += this.CONCURRENCY_LIMIT) {
                 // 检查是否要停止
                 if (this.shouldStop) {
                     throw new Error('USER_STOPPED');
                 }
-                
-                const batchNum = Math.floor(i / batchSize) + 1;
-                const batch = keywordsToTranslate.slice(i, i + batchSize);
-                const progress = 15 + (batchNum / totalBatches) * 30; // 15-45%的进度用于翻译
-                
-                this.updateProgress(progress, `翻译进度: ${batchNum}/${totalBatches} 批 (${keywordsToTranslate.length} 个关键词)...`);
-                console.log(`处理第 ${batchNum}/${totalBatches} 批，包含 ${batch.length} 个关键词`);
-                
-                const batchTranslations = await this.translateBatch(batch);
-                batch.forEach((item, index) => {
-                    results.set(item.index, batchTranslations[index]);
-                });
-            }
 
-            // 构建最终结果
-            const finalTranslations = [];
-            for (let i = 0; i < keywords.length; i++) {
-                if (translationMap.has(i)) {
-                    finalTranslations.push(translationMap.get(i));
-                } else {
-                    finalTranslations.push(results.get(i) || keywords[i]);
+                const currentBatchPromises = [];
+                const currentBatchCount = Math.min(this.CONCURRENCY_LIMIT, totalBatches - batchGroup);
+
+                console.log(`开始处理批次组 ${batchGroup + 1}-${batchGroup + currentBatchCount}`);
+
+                // 创建当前批次的并发请求
+                for (let j = 0; j < currentBatchCount; j++) {
+                    const batchIndex = batchGroup + j;
+                    const startIndex = batchIndex * this.BATCH_SIZE;
+                    const endIndex = Math.min(startIndex + this.BATCH_SIZE, keywordsToTranslate.length);
+                    const batchKeywords = keywordsToTranslate.slice(startIndex, endIndex);
+
+                    // 更新进度显示
+                    const progress = 15 + (batchGroup / totalBatches) * 30;
+                    this.updateProgress(progress,
+                        `并发翻译: 批次组 ${Math.floor(batchGroup / this.CONCURRENCY_LIMIT) + 1}/${Math.ceil(totalBatches / this.CONCURRENCY_LIMIT)}，` +
+                        `当前处理 ${startIndex + 1}-${endIndex}/${keywordsToTranslate.length} 个关键词...`
+                    );
+
+                    // 创建带索引的翻译请求
+                    currentBatchPromises.push(this.translateBatchWithIndex(batchKeywords, startIndex));
+                }
+
+                try {
+                    // 等待当前批次组的所有并发请求完成
+                    const batchResults = await Promise.all(currentBatchPromises);
+
+                    // 按索引组装结果
+                    batchResults.forEach(result => {
+                        for (let k = 0; k < result.translations.length; k++) {
+                            const originalIndex = result.startIndex + k;
+                            const originalKeywordIndex = keywordsToTranslate[originalIndex]?.index;
+                            if (originalKeywordIndex !== undefined) {
+                                finalTranslations[originalKeywordIndex] = result.translations[k];
+                            }
+                        }
+                    });
+
+                    console.log(`批次组 ${batchGroup + 1}-${batchGroup + currentBatchCount} 完成`);
+
+                } catch (error) {
+                    console.error(`批次组 ${batchGroup + 1}-${batchGroup + currentBatchCount} 处理失败:`, error);
+                    throw error;
                 }
             }
 
-            console.log('批量翻译完成，翻译结果:', finalTranslations);
-            console.log('原始关键词:', keywords);
+            // 填充未翻译的关键词（保持原词）
+            for (let i = 0; i < finalTranslations.length; i++) {
+                if (finalTranslations[i] === undefined) {
+                    finalTranslations[i] = keywords[i];
+                }
+            }
+
+            console.log('并发批量翻译完成');
             return finalTranslations;
 
         } catch (error) {
-            console.error('批量翻译失败:', error);
+            console.error('并发批量翻译失败:', error);
             if (error.message === 'USER_STOPPED') {
                 throw error;
             }
@@ -342,7 +388,7 @@ class KeywordProcessor {
     }
 
     async translateBatch(batch) {
-        const prompt = batch.map((item, index) => 
+        const prompt = batch.map((item, index) =>
             `${index + 1}. ${item.keyword}`
         ).join('\n');
 
@@ -374,11 +420,11 @@ class KeywordProcessor {
 
             const data = await response.json();
             const translationText = data.choices[0].message.content.trim();
-            
+
             // 解析翻译结果
             const lines = translationText.split('\n').filter(line => line.trim());
             const translations = [];
-            
+
             for (let i = 0; i < batch.length; i++) {
                 const line = lines[i] || '';
                 // 提取翻译结果，去掉序号和可能的标点
@@ -392,6 +438,95 @@ class KeywordProcessor {
             console.error('批量翻译失败:', error);
             return batch.map(item => item.keyword);
         }
+    }
+
+    async translateBatchWithIndex(batch, startIndex) {
+        const prompt = batch.map((item, index) =>
+            `${index + 1}. ${item.keyword}`
+        ).join('\n');
+
+        console.log(`开始翻译批次 ${startIndex + 1}-${startIndex + batch.length}，共 ${batch.length} 个关键词`);
+
+        let lastError = null;
+
+        // 重试机制
+        for (let attempt = 1; attempt <= this.MAX_RETRIES + 1; attempt++) {
+            try {
+                // 添加超时控制
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT);
+
+                const response = await fetch(`${this.apiEndpoint}/v1/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: [
+                            {
+                                role: 'user',
+                                content: `请将以下关键词翻译成中文，每行一个，按照相同格式返回。不管原词是什么语言，都必须翻译成中文：\n\n${prompt}`
+                            }
+                        ],
+                        max_tokens: Math.min(batch.length * 20, 4000), // 动态调整token数量
+                        temperature: 0.1
+                    }),
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`批次 ${startIndex} 第${attempt}次尝试 API错误详情:`, errorText);
+                    throw new Error(`API请求失败: ${response.status} - ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const translationText = data.choices[0].message.content.trim();
+
+                console.log(`批次 ${startIndex} 第${attempt}次尝试翻译响应长度: ${translationText.length}`);
+
+                // 解析翻译结果
+                const lines = translationText.split('\n').filter(line => line.trim());
+                const translations = [];
+
+                for (let i = 0; i < batch.length; i++) {
+                    const line = lines[i] || '';
+                    // 提取翻译结果，去掉序号和可能的标点
+                    const translation = line.replace(/^\d+\.\s*/, '').replace(/^["']|["']$/g, '').trim();
+                    translations.push(translation || batch[i].keyword);
+                }
+
+                console.log(`批次 ${startIndex} 第${attempt}次尝试翻译完成，成功翻译 ${translations.length} 个关键词`);
+
+                // 返回带索引的结果
+                return {
+                    startIndex: startIndex,
+                    translations: translations
+                };
+
+            } catch (error) {
+                lastError = error;
+                console.error(`批次 ${startIndex} 第${attempt}次尝试失败:`, error);
+
+                // 如果不是最后一次尝试，等待一段时间后重试
+                if (attempt <= this.MAX_RETRIES) {
+                    const delayTime = attempt * 1000; // 递增延迟：1秒，2秒
+                    console.log(`批次 ${startIndex} 第${attempt}次尝试失败，${delayTime}ms 后重试...`);
+                    await new Promise(resolve => setTimeout(resolve, delayTime));
+                }
+            }
+        }
+
+        // 所有重试都失败，返回原始关键词
+        console.error(`批次 ${startIndex} 所有重试都失败，返回原始关键词`);
+        return {
+            startIndex: startIndex,
+            translations: batch.map(item => item.keyword)
+        };
     }
 
     generateXLSX(data) {
