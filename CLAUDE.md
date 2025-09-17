@@ -225,6 +225,21 @@ API configuration stored in Chrome local storage:
 - **CSP Compliance**: Fixed Content Security Policy issues by using local jszip.min.js
 
 ### Known Issues
-- **Batch Size Discrepancy**: Documentation mentions 80 keywords/batch, code uses 20 keywords/batch
+- **Batch Size Discrepancy**: Documentation mentions 80 keywords/batch, code uses 40 keywords/batch (configurable via UI)
 - **File Size Limits**: Large files may cause memory issues (processed in chunks)
 - **API Rate Limits**: DeepSeek API may have rate limits that affect processing speed
+
+## Current Development Status
+
+### Recent Changes (v5.0)
+- **Keyword Ocean Architecture**: Implemented file-boundary-breaking concurrent processing
+- **Dynamic Configuration**: Batch size and concurrency limit are now configurable via UI (default: 40 keywords, 25 concurrent)
+- **Performance Logging**: Added comprehensive performance tracking and export functionality
+- **Independent Window**: Removed popup/sidepanel interfaces in favor of 700x900px standalone window
+- **CSP Compliance**: Fixed Content Security Policy issues by using local jszip.min.js
+
+### Configuration Parameters
+- **batchSize**: Number of keywords per translation batch (default: 40, configurable via UI)
+- **concurrencyLimit**: Maximum concurrent API requests (default: 25, configurable via UI)
+- **REQUEST_TIMEOUT**: 30 seconds per API request
+- **MAX_RETRIES**: 2 retry attempts per failed request

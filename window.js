@@ -18,7 +18,7 @@ class KeywordProcessor {
 
         // 其他常量
         this.REQUEST_TIMEOUT = 30000;   // 请求超时时间
-        this.MAX_RETRIES = 2;           // 最大重试次数
+        this.MAX_RETRIES = 9;           // 最大重试次数
 
         // 性能日志收集系统
         this.performanceLogs = [];
