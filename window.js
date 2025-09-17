@@ -293,6 +293,11 @@ class KeywordProcessor {
         console.log(`开始处理 ${this.files.length} 个文件（单词海洋模式）`);
 
         try {
+            // 初始化进度条为单词海洋模式
+            document.getElementById('progressText').textContent = '单词海洋处理准备中...';
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressBar').style.background = 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)';
+
             // 单词海洋优化：一次性扫描所有文件，构建关键词流
             const oceanProcessingStartTime = this.markTime('单词海洋处理开始');
             this.logPerformance('OCEAN_PROCESSING_START', {
@@ -345,6 +350,12 @@ class KeywordProcessor {
                 batchCount: batches.length,
                 concurrencyLimit: this.CONCURRENCY_LIMIT
             });
+
+            // 初始化关键词进度跟踪
+            this.oceanKeywordProgress = {
+                total: keywordStream.length,
+                processed: 0
+            };
 
             const translationResults = await this.processBatchesForOcean(batches, keywordStream.length);
 
@@ -408,6 +419,12 @@ class KeywordProcessor {
 
             this.updateFileList();
             this.updateProgress(this.files.length, this.files.length, true);
+
+            // 确保进度条显示完成状态
+            if (this.oceanKeywordProgress) {
+                this.oceanKeywordProgress.processed = this.oceanKeywordProgress.total;
+                this.updateOceanProgress();
+            }
             this.markTime('处理完成');
             const totalTime = this.getTimeDiff('处理开始', '处理完成');
 
@@ -890,7 +907,6 @@ class KeywordProcessor {
         };
     }
 
-  
     updateProgress(current, total, isOceanMode = false) {
         const percentage = Math.round((current / total) * 100);
         const progressBar = document.getElementById('progressBar');
@@ -899,10 +915,29 @@ class KeywordProcessor {
 
         if (percentage === 100) {
             progressBar.style.background = 'linear-gradient(90deg, #28a745 0%, #20c997 100%)';
-            document.getElementById('progressText').textContent = isOceanMode ? '单词海洋处理完毕' : '处理完毕';
+            document.getElementById('progressText').textContent = '处理完毕';
         } else {
             progressBar.style.background = 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)';
             document.getElementById('progressText').textContent = isOceanMode ? `单词海洋处理中: ${current}/${total}` : `正在处理: ${current}/${total}`;
+        }
+    }
+
+    // 单词海洋模式下的关键词级进度更新
+    updateOceanProgress() {
+        if (!this.oceanKeywordProgress) return;
+
+        const { processed, total } = this.oceanKeywordProgress;
+        const percentage = Math.round((processed / total) * 100);
+        const progressBar = document.getElementById('progressBar');
+
+        progressBar.style.width = `${percentage}%`;
+
+        if (percentage === 100) {
+            progressBar.style.background = 'linear-gradient(90deg, #28a745 0%, #20c997 100%)';
+            document.getElementById('progressText').textContent = '处理完毕';
+        } else {
+            progressBar.style.background = 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)';
+            document.getElementById('progressText').textContent = `${processed}/${total}`;
         }
     }
 
@@ -1265,6 +1300,14 @@ class KeywordProcessor {
                         results[streamIndex] = translation;
                     });
                 });
+
+                // 更新关键词进度（考虑最后一个批次可能不满）
+                const actualProcessedInThisGroup = Math.min(
+                    currentBatchCount * this.BATCH_SIZE,
+                    this.oceanKeywordProgress.total - this.oceanKeywordProgress.processed
+                );
+                this.oceanKeywordProgress.processed += actualProcessedInThisGroup;
+                this.updateOceanProgress();
 
                 console.log(`批次组 ${batchGroup + 1}-${batchGroup + currentBatchCount} 处理完成`);
 
