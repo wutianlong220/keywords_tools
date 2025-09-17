@@ -39,7 +39,6 @@
 - `window.html` - 独立窗口界面 (700x900px面板)
 - `window.js` - 核心业务逻辑 (关键词海洋优化算法)
 - `background.js` - 后台脚本
-- `sidepanel.html/sidepanel.js` - 侧边栏界面
 - `xlsx.full.min.js` - Excel处理库
 - `docs/` - 技术文档目录
 

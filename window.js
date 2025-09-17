@@ -53,40 +53,8 @@ class KeywordProcessor {
     }
 
     setupPerformanceLogging() {
-        // 添加全局日志读取功能
-        window.getKeywordToolLogs = () => {
-            return {
-                sessionId: this.currentSessionId,
-                logs: this.performanceLogs,
-                timeMarkers: this.timeMarkers,
-                summary: this.generatePerformanceSummary()
-            };
-        };
-
-        // 添加清空日志功能
-        window.clearKeywordToolLogs = () => {
-            this.performanceLogs = [];
-            this.timeMarkers = {};
-            this.currentSessionId = Date.now();
-            console.log('关键词工具日志已清空');
-        };
-
-        // 添加导出日志功能
-        window.exportKeywordToolLogs = () => {
-            const logsData = window.getKeywordToolLogs();
-            const blob = new Blob([JSON.stringify(logsData, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `keyword-tool-logs-${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-        };
-
         console.log('关键词工具性能日志已启用');
-        console.log('使用 window.getKeywordToolLogs() 查看日志');
-        console.log('使用 window.clearKeywordToolLogs() 清空日志');
-        console.log('使用 window.exportKeywordToolLogs() 导出日志');
+        console.log('使用实例方法查看、清空和导出日志');
     }
 
     // 日志记录方法
@@ -418,7 +386,7 @@ class KeywordProcessor {
             });
 
             this.updateFileList();
-            this.updateProgress(this.files.length, this.files.length, true);
+            this.updateOceanProgress();
 
             // 确保进度条显示完成状态
             if (this.oceanKeywordProgress) {
@@ -461,102 +429,8 @@ class KeywordProcessor {
         }
     }
 
-    async processFile(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-
-            reader.onload = (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-                    // 处理数据（翻译、计算Kdroi等）
-                    this.processXLSXData(jsonData).then(resolve).catch(reject);
-                } catch (error) {
-                    reject(error);
-                }
-            };
-
-            reader.onerror = () => reject(new Error('文件读取失败'));
-            reader.readAsArrayBuffer(file);
-        });
-    }
-
-    async processXLSXData(xlsxData) {
-        const headers = xlsxData[0];
-        const rows = xlsxData.slice(1);
-
-        console.log(`解析完成: ${rows.length}行数据, 检测到${headers.length}列`);
-
-        // 查找列索引
-        const keywordIndex = headers.findIndex(h => h.toLowerCase().includes('keyword'));
-        const intentIndex = headers.findIndex(h => h.toLowerCase().includes('intent'));
-        const volumeIndex = headers.findIndex(h => h.toLowerCase().includes('volume'));
-        const difficultyIndex = headers.findIndex(h => h.toLowerCase().includes('difficulty'));
-        const cpcIndex = headers.findIndex(h => h.toLowerCase().includes('cpc'));
-
-        console.log(`Keyword列:${keywordIndex}, Volume列:${volumeIndex}, Difficulty列:${difficultyIndex}, CPC列:${cpcIndex}`);
-
-        if (keywordIndex === -1) {
-            throw new Error('未找到Keyword列');
-        }
-
-        // 构建新的表头
-        const newHeaders = [...headers];
-        newHeaders.splice(keywordIndex + 1, 0, 'Translation');
-
-        // 计算CPC列的位置（考虑插入Translation列后的位置变化）
-        const cpcPosition = cpcIndex !== -1 ? cpcIndex + (cpcIndex > keywordIndex ? 1 : 0) : headers.length;
-        newHeaders.splice(cpcPosition + 1, 0, 'Kdroi');
-        newHeaders.splice(cpcPosition + 2, 0, 'SERP');
-        newHeaders.splice(cpcPosition + 3, 0, 'Google Trends');
-        newHeaders.splice(cpcPosition + 4, 0, 'Ahrefs Keyword Difficulty Checker');
-
-        // 批量翻译关键词
-        const keywords = rows.map(row => row[keywordIndex]);
-        const translations = await this.batchTranslateKeywords(keywords, rows.length);
-
-        const processedRows = [];
-
-        // 处理每一行数据
-        for (let i = 0; i < rows.length; i++) {
-            const row = rows[i];
-
-            const newRow = [...row];
-            const keyword = row[keywordIndex];
-
-            // 插入翻译
-            const translation = translations[i];
-            newRow.splice(keywordIndex + 1, 0, translation);
-
-            // 计算Kdroi
-            const volume = parseFloat(row[volumeIndex]) || 0;
-            const difficulty = parseFloat(row[difficultyIndex]) || 1;
-            const cpc = parseFloat(row[cpcIndex]) || 0;
-            const kdroi = difficulty > 0 ? parseFloat(((volume * cpc) / difficulty).toFixed(2)) : 0.00;
-
-            // 计算CPC列在新行中的位置（考虑插入的Translation列）
-            const adjustedCpcIndex = cpcIndex !== -1 ? cpcIndex + (cpcIndex > keywordIndex ? 1 : 0) : newRow.length - 4;
-            newRow.splice(adjustedCpcIndex + 1, 0, kdroi);
-
-            // 生成链接
-            const serpLink = `https://www.google.com/search?q=${encodeURIComponent(keyword)}`;
-            const trendsLink = `https://trends.google.com/trends/explore?q=${encodeURIComponent(keyword)}`;
-            const ahrefsLink = `https://ahrefs.com/keyword-difficulty/?country=us&input=${encodeURIComponent(keyword)}`;
-
-            newRow.splice(adjustedCpcIndex + 2, 0, serpLink);
-            newRow.splice(adjustedCpcIndex + 3, 0, trendsLink);
-            newRow.splice(adjustedCpcIndex + 4, 0, ahrefsLink);
-
-            processedRows.push(newRow);
-        }
-
-        return [newHeaders, ...processedRows];
-    }
-
+    
+    
     async batchTranslateKeywords(keywords, totalRows) {
         if (!keywords || keywords.length === 0) {
             return [];
@@ -705,59 +579,7 @@ class KeywordProcessor {
         }
     }
 
-    async translateBatch(batch) {
-        const prompt = batch.map((item, index) =>
-            `${index + 1}. ${item.keyword}`
-        ).join('\n');
-
-        try {
-            const response = await fetch(`${this.apiConfig.endpoint}/v1/chat/completions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.apiConfig.key}`
-                },
-                body: JSON.stringify({
-                    model: 'deepseek-chat',
-                    messages: [
-                        {
-                            role: 'user',
-                            content: `请将以下关键词翻译成中文，每行一个，按照相同格式返回。不管原词是什么语言，都必须翻译成中文：\n\n${prompt}`
-                        }
-                    ],
-                    max_tokens: 1000,
-                    temperature: 0.1
-                })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('API错误详情:', errorText);
-                throw new Error(`API请求失败: ${response.status} - ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            const translationText = data.choices[0].message.content.trim();
-
-            // 解析翻译结果
-            const lines = translationText.split('\n').filter(line => line.trim());
-            const translations = [];
-
-            for (let i = 0; i < batch.length; i++) {
-                const line = lines[i] || '';
-                // 提取翻译结果，去掉序号和可能的标点
-                const translation = line.replace(/^\d+\.\s*/, '').replace(/^["']|["']$/g, '').trim();
-                translations.push(translation || batch[i].keyword);
-            }
-
-            return translations;
-
-        } catch (error) {
-            console.error('批量翻译失败:', error);
-            return batch.map(item => item.keyword);
-        }
-    }
-
+  
     async translateBatchWithIndex(batch, startIndex) {
         const prompt = batch.map((item, index) =>
             `${index + 1}. ${item.keyword}`
@@ -776,10 +598,11 @@ class KeywordProcessor {
 
         // 重试机制
         for (let attempt = 1; attempt <= this.MAX_RETRIES + 1; attempt++) {
+            let timeoutId;
             try {
                 // 添加超时控制
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT);
+                timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT);
 
                 const apiCallStartTime = this.markTime(`API调用${startIndex}_尝试${attempt}_开始`);
                 this.logPerformance('API_CALL_START', {
@@ -907,21 +730,7 @@ class KeywordProcessor {
         };
     }
 
-    updateProgress(current, total, isOceanMode = false) {
-        const percentage = Math.round((current / total) * 100);
-        const progressBar = document.getElementById('progressBar');
-
-        progressBar.style.width = `${percentage}%`;
-
-        if (percentage === 100) {
-            progressBar.style.background = 'linear-gradient(90deg, #28a745 0%, #20c997 100%)';
-            document.getElementById('progressText').textContent = '处理完毕';
-        } else {
-            progressBar.style.background = 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)';
-            document.getElementById('progressText').textContent = isOceanMode ? `单词海洋处理中: ${current}/${total}` : `正在处理: ${current}/${total}`;
-        }
-    }
-
+    
     // 单词海洋模式下的关键词级进度更新
     updateOceanProgress() {
         if (!this.oceanKeywordProgress) return;
@@ -1071,9 +880,19 @@ class KeywordProcessor {
         }, 3000);
     }
 
+    // 获取日志数据
+    getKeywordToolLogs() {
+        return {
+            sessionId: this.currentSessionId,
+            logs: this.performanceLogs,
+            timeMarkers: this.timeMarkers,
+            summary: this.generatePerformanceSummary()
+        };
+    }
+
     // 查看日志
     viewLogs() {
-        const logsData = window.getKeywordToolLogs();
+        const logsData = this.getKeywordToolLogs();
         console.log('=== 关键词工具日志 ===', logsData);
 
         // 创建日志窗口
@@ -1120,7 +939,14 @@ class KeywordProcessor {
 
     // 导出日志
     exportLogs() {
-        window.exportKeywordToolLogs();
+        const logsData = this.getKeywordToolLogs();
+        const blob = new Blob([JSON.stringify(logsData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `keyword-tool-logs-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
         this.showNotification('日志已导出', 'success');
     }
 
@@ -1339,9 +1165,10 @@ class KeywordProcessor {
 
         // 重试机制
         for (let attempt = 1; attempt <= this.MAX_RETRIES + 1; attempt++) {
+            let timeoutId;
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT);
+                timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT);
 
                 const apiCallStartTime = this.markTime(`海洋API调用${batchIndex}_尝试${attempt}_开始`);
                 this.logPerformance('OCEAN_API_CALL_START', {
