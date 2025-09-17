@@ -33,17 +33,17 @@ chrome://extensions/
 
 ### Key Features
 - **File Processing**: Drag & drop XLSX upload with SheetJS parsing, multi-file support
-- **Batch Translation**: DeepSeek API calls with concurrent processing (80 keywords per batch, 25 concurrent requests)
+- **Batch Translation**: DeepSeek API calls with concurrent processing (configurable 15-85 keywords per batch, 25 concurrent requests)
 - **Kdroi Calculation**: ROI formula (Volume × CPC ÷ Keyword Difficulty)
 - **Link Generation**: Google Search, Google Trends, Ahrefs query links
 - **Local Storage**: Chrome Storage API for API credentials
 - **Export**: Merged XLSX with overview sheet and proper number formatting
-- **UI Options**: Standalone window panel (700x900px) and side panel interfaces
+- **UI Options**: Standalone window panel (700x900px) only (popup/sidepanel removed)
 
 ### Keyword Ocean Architecture (v5.0)
 - **Keyword-level concurrency**: Breaks file boundaries to process keywords as a continuous stream
 - **Dual indexing system**: File index + keyword index mapping ensures 100% accuracy
-- **Optimal batching**: 100% batch utilization with fixed 80-keyword batches
+- **Optimal batching**: 100% batch utilization with configurable batch sizes (default: 40 keywords)
 - **Performance gains**: Up to 77% performance improvement vs file-level processing
 - **Smart progress tracking**: Real-time keyword-level progress display
 
@@ -106,16 +106,16 @@ chrome://extensions/
 - `reconstructFileData()`: Reconstruct original file structure with processed data
 
 ### Concurrency & Performance
-- **BATCH_SIZE**: 20 keywords per batch (optimized for long-tail keywords)
-- **CONCURRENCY_LIMIT**: 25 concurrent API requests
+- **BATCH_SIZE**: Configurable 15-85 keywords per batch (default: 40, optimized for long-tail keywords)
+- **CONCURRENCY_LIMIT**: Configurable 2-25 concurrent API requests (default: 25)
 - **REQUEST_TIMEOUT**: 30 seconds per request
-- **MAX_RETRIES**: 2 retry attempts per failed request
+- **MAX_RETRIES**: 9 retry attempts per failed request (recently increased from 2 for API stability)
 - **Performance gain**: 77% improvement with Keyword Ocean optimization
 
 ### API Integration
 - **Endpoint**: Configurable DeepSeek Chat Completions API
-- **Batching**: 20 keywords per batch with 25 concurrent requests
-- **Error Handling**: Retry logic with exponential backoff
+- **Batching**: Configurable batch size with concurrent requests
+- **Error Handling**: Enhanced retry logic with exponential backoff
 - **Rate Limiting**: Built-in delays between retries
 - **Timeout Handling**: 30-second timeout with abort controller
 
@@ -181,7 +181,7 @@ API configuration stored in Chrome local storage:
 - **Multi-file**: Batch processing with keyword-level concurrent handling
 - **Error Recovery**: Retry mechanism with exponential backoff
 - **Memory Management**: Large files processed in chunks to avoid memory issues
-- **Concurrency Control**: 25 concurrent requests with 80-keyword batches
+- **Concurrency Control**: Configurable concurrent requests (2-25) with configurable batch sizes (15-85)
 - **Performance Monitoring**: Built-in performance logging and metrics collection
 
 ## Performance Metrics
@@ -219,27 +219,19 @@ API configuration stored in Chrome local storage:
 
 ### Recent Changes (v5.0)
 - **Keyword Ocean Architecture**: Implemented file-boundary-breaking concurrent processing
-- **Batch Size Optimization**: Reduced from 80 to 20 keywords per batch for better long-tail keyword handling
+- **Dynamic Configuration**: Batch size (15-85) and concurrency limit (2-25) now configurable via UI
+- **Enhanced Retry Logic**: Increased retry attempts from 2 to 9 for improved API stability
 - **Performance Logging**: Added comprehensive performance tracking and export functionality
 - **Independent Window**: Removed popup/sidepanel interfaces in favor of 700x900px standalone window
 - **CSP Compliance**: Fixed Content Security Policy issues by using local jszip.min.js
 
 ### Known Issues
-- **Batch Size Discrepancy**: Documentation mentions 80 keywords/batch, code uses 40 keywords/batch (configurable via UI)
 - **File Size Limits**: Large files may cause memory issues (processed in chunks)
 - **API Rate Limits**: DeepSeek API may have rate limits that affect processing speed
-
-## Current Development Status
-
-### Recent Changes (v5.0)
-- **Keyword Ocean Architecture**: Implemented file-boundary-breaking concurrent processing
-- **Dynamic Configuration**: Batch size and concurrency limit are now configurable via UI (default: 40 keywords, 25 concurrent)
-- **Performance Logging**: Added comprehensive performance tracking and export functionality
-- **Independent Window**: Removed popup/sidepanel interfaces in favor of 700x900px standalone window
-- **CSP Compliance**: Fixed Content Security Policy issues by using local jszip.min.js
+- **UI Configuration**: Dynamic batch size and concurrency limits configured via interface before processing
 
 ### Configuration Parameters
-- **batchSize**: Number of keywords per translation batch (default: 40, configurable via UI)
-- **concurrencyLimit**: Maximum concurrent API requests (default: 25, configurable via UI)
+- **batchSize**: Number of keywords per translation batch (15-85, default: 40, configurable via UI)
+- **concurrencyLimit**: Maximum concurrent API requests (2-25, default: 25, configurable via UI)
 - **REQUEST_TIMEOUT**: 30 seconds per API request
-- **MAX_RETRIES**: 2 retry attempts per failed request
+- **MAX_RETRIES**: 9 retry attempts per failed request (increased from 2 for API stability)

@@ -950,10 +950,13 @@ class KeywordProcessor {
     }
 
     extractWordRoot(filename) {
-        // 从文件名中提取词根
+        // 从文件名中提取词根：去掉 _broad-match_ 及其后面的所有内容
         const name = filename.replace(/\.[^/.]+$/, '');
-        const parts = name.split(/[_\-]/);
-        return parts[0] || name;
+        const broadMatchIndex = name.indexOf('_broad-match_');
+        if (broadMatchIndex !== -1) {
+            return name.substring(0, broadMatchIndex);
+        }
+        return name;
     }
 
     clearFiles() {
