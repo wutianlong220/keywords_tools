@@ -290,65 +290,124 @@ class KeywordProcessor {
         this.markTime('处理开始');
         this.logPerformance('处理开始', { fileCount: this.files.length });
 
-        console.log(`开始处理 ${this.files.length} 个文件`);
+        console.log(`开始处理 ${this.files.length} 个文件（单词海洋模式）`);
 
         try {
-            // 逐个处理文件
-            for (let i = 0; i < this.files.length; i++) {
-                const fileInfo = this.files[i];
-                fileInfo.status = 'processing';
-                this.updateFileList();
-                this.updateProgress(i, this.files.length);
+            // 单词海洋优化：一次性扫描所有文件，构建关键词流
+            const oceanProcessingStartTime = this.markTime('单词海洋处理开始');
+            this.logPerformance('OCEAN_PROCESSING_START', {
+                fileCount: this.files.length,
+                mode: 'keyword_ocean'
+            });
 
-                const fileStartTime = this.markTime(`文件${i}_开始`);
-                this.logPerformance('FILE_PROCESSING_START', {
-                    fileName: fileInfo.file.name,
-                    fileSize: fileInfo.file.size,
-                    fileIndex: i
-                });
+            // 阶段1：文件扫描和数据预处理
+            const preprocessingStartTime = this.markTime('文件预处理开始');
+            this.logPerformance('FILE_PREPROCESSING_START', {
+                fileCount: this.files.length
+            });
 
-                console.log(`开始处理: ${fileInfo.file.name}`);
+            const { fileMapping, keywordStream } = await this.preprocessFilesForOcean();
 
-                try {
-                    const processedData = await this.processFile(fileInfo.file);
-                    const fileEndTime = this.markTime(`文件${i}_完成`);
-                    const fileProcessTime = this.getTimeDiff(`文件${i}_开始`, `文件${i}_完成`);
+            const preprocessingEndTime = this.markTime('文件预处理完成');
+            const preprocessingTime = this.getTimeDiff('文件预处理开始', '文件预处理完成');
 
-                    fileInfo.processedData = processedData;
-                    fileInfo.status = 'completed';
-                    this.processedFiles.push({
-                        name: fileInfo.file.name,
-                        data: processedData
-                    });
+            this.logPerformance('FILE_PREPROCESSING_COMPLETE', {
+                fileCount: this.files.length,
+                totalKeywords: keywordStream.length,
+                processTime: preprocessingTime
+            });
 
-                    this.logPerformance('FILE_PROCESSING_COMPLETE', {
-                        fileName: fileInfo.file.name,
-                        processTime: fileProcessTime,
-                        rowsGenerated: processedData.length - 1,
-                        fileIndex: i
-                    });
+            console.log(`文件预处理完成: 扫描${fileMapping.length}个文件，构建${keywordStream.length}个关键词流，耗时${preprocessingTime}ms`);
 
-                    console.log(`处理完成: ${fileInfo.file.name}, 生成${processedData.length - 1}行数据, 耗时${fileProcessTime}ms`);
-                } catch (error) {
-                    const fileEndTime = this.markTime(`文件${i}_失败`);
-                    const fileProcessTime = this.getTimeDiff(`文件${i}_开始`, `文件${i}_失败`);
+            // 阶段2：批次切割和映射
+            const batchCreationStartTime = this.markTime('批次切割开始');
+            this.logPerformance('BATCH_CREATION_START', {
+                keywordCount: keywordStream.length,
+                batchSize: this.BATCH_SIZE
+            });
 
-                    fileInfo.status = 'error';
+            const batches = this.createBatchesForOcean(keywordStream);
 
-                    this.logPerformance('FILE_PROCESSING_ERROR', {
-                        fileName: fileInfo.file.name,
-                        processTime: fileProcessTime,
-                        error: error.message,
-                        fileIndex: i
-                    });
+            const batchCreationEndTime = this.markTime('批次切割完成');
+            const batchCreationTime = this.getTimeDiff('批次切割开始', '批次切割完成');
 
-                    console.error(`处理文件 ${fileInfo.file.name} 失败:`, error);
+            this.logPerformance('BATCH_CREATION_COMPLETE', {
+                totalBatches: batches.length,
+                totalKeywords: keywordStream.length,
+                processTime: batchCreationTime
+            });
+
+            console.log(`批次切割完成: 创建${batches.length}个批次，总关键词${keywordStream.length}个，耗时${batchCreationTime}ms`);
+
+            // 阶段3：并发批次处理
+            const batchProcessingStartTime = this.markTime('批次处理开始');
+            this.logPerformance('BATCH_PROCESSING_START', {
+                batchCount: batches.length,
+                concurrencyLimit: this.CONCURRENCY_LIMIT
+            });
+
+            const translationResults = await this.processBatchesForOcean(batches, keywordStream.length);
+
+            const batchProcessingEndTime = this.markTime('批次处理完成');
+            const batchProcessingTime = this.getTimeDiff('批次处理开始', '批次处理完成');
+
+            this.logPerformance('BATCH_PROCESSING_COMPLETE', {
+                batchCount: batches.length,
+                totalKeywords: keywordStream.length,
+                processTime: batchProcessingTime,
+                avgTimePerKeyword: Math.round(batchProcessingTime / keywordStream.length)
+            });
+
+            console.log(`批次处理完成: 处理${batches.length}个批次，${keywordStream.length}个关键词，耗时${batchProcessingTime}ms`);
+
+            // 阶段4：结果分配和文件重建
+            const distributionStartTime = this.markTime('结果分配开始');
+            this.logPerformance('RESULT_DISTRIBUTION_START', {
+                fileCount: fileMapping.length,
+                keywordCount: keywordStream.length
+            });
+
+            const processedFileMapping = await this.distributeResultsForOcean(translationResults, fileMapping, keywordStream);
+
+            const distributionEndTime = this.markTime('结果分配完成');
+            const distributionTime = this.getTimeDiff('结果分配开始', '结果分配完成');
+
+            this.logPerformance('RESULT_DISTRIBUTION_COMPLETE', {
+                fileCount: fileMapping.length,
+                keywordCount: keywordStream.length,
+                processTime: distributionTime
+            });
+
+            console.log(`结果分配完成: 重建${processedFileMapping.length}个文件，耗时${distributionTime}ms`);
+
+            // 完成单词海洋处理
+            const oceanProcessingEndTime = this.markTime('单词海洋处理完成');
+            const oceanProcessingTime = this.getTimeDiff('单词海洋处理开始', '单词海洋处理完成');
+
+            this.logPerformance('OCEAN_PROCESSING_COMPLETE', {
+                fileCount: fileMapping.length,
+                totalKeywords: keywordStream.length,
+                totalBatches: batches.length,
+                totalTime: oceanProcessingTime
+            });
+
+            // 转换为原有的processedFiles格式
+            this.processedFiles = processedFileMapping.map(fileInfo => ({
+                name: fileInfo.fileName,
+                data: fileInfo.processedData
+            }));
+
+            // 更新文件状态
+            this.processedFiles.forEach(processedFile => {
+                const originalFileInfo = this.files.find(f => f.file.name === processedFile.name);
+                if (originalFileInfo) {
+                    originalFileInfo.status = 'completed';
+                    originalFileInfo.processedData = processedFile.data;
                 }
+            });
 
-                this.updateFileList();
-            }
-
-            this.updateProgress(this.files.length, this.files.length);
+            this.updateFileList();
+            this.updateProgress(this.files.length, this.files.length, true);
             this.markTime('处理完成');
             const totalTime = this.getTimeDiff('处理开始', '处理完成');
 
@@ -356,12 +415,13 @@ class KeywordProcessor {
                 totalFiles: this.files.length,
                 successFiles: this.processedFiles.length,
                 failedFiles: this.files.length - this.processedFiles.length,
-                totalTime: totalTime
+                totalTime: totalTime,
+                mode: 'keyword_ocean'
             });
 
-            this.showNotification('所有文件处理完成', 'success');
+            this.showNotification('所有文件处理完成（单词海洋模式）', 'success');
 
-            console.log(`所有文件处理完成, 成功:${this.processedFiles.length}个, 失败:${this.files.length - this.processedFiles.length}个, 总耗时:${totalTime}ms`);
+            console.log(`单词海洋处理完成: 成功${this.processedFiles.length}个文件，${keywordStream.length}个关键词，总耗时${totalTime}ms`);
 
             // 启用下载按钮
             document.getElementById('downloadBtn').disabled = false;
@@ -372,10 +432,11 @@ class KeywordProcessor {
 
             this.logPerformance('处理失败', {
                 error: error.message,
-                totalTime: totalTime
+                totalTime: totalTime,
+                mode: 'keyword_ocean'
             });
 
-            console.error('处理过程中出现错误:', error);
+            console.error('单词海洋处理过程中出现错误:', error);
             this.showNotification('处理过程中出现错误', 'error');
         } finally {
             this.isProcessing = false;
@@ -829,8 +890,8 @@ class KeywordProcessor {
         };
     }
 
-    
-    updateProgress(current, total) {
+  
+    updateProgress(current, total, isOceanMode = false) {
         const percentage = Math.round((current / total) * 100);
         const progressBar = document.getElementById('progressBar');
 
@@ -838,10 +899,10 @@ class KeywordProcessor {
 
         if (percentage === 100) {
             progressBar.style.background = 'linear-gradient(90deg, #28a745 0%, #20c997 100%)';
-            document.getElementById('progressText').textContent = '处理完毕';
+            document.getElementById('progressText').textContent = isOceanMode ? '单词海洋处理完毕' : '处理完毕';
         } else {
             progressBar.style.background = 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)';
-            document.getElementById('progressText').textContent = `正在处理: ${current}/${total}`;
+            document.getElementById('progressText').textContent = isOceanMode ? `单词海洋处理中: ${current}/${total}` : `正在处理: ${current}/${total}`;
         }
     }
 
@@ -1034,6 +1095,467 @@ class KeywordProcessor {
             this.clearPreviousLogs();
             this.showNotification('日志已清空', 'info');
         }
+    }
+
+    // ========== 单词海洋优化方法 ==========
+
+    // 阶段1：文件扫描和数据预处理
+    async preprocessFilesForOcean() {
+        const fileMapping = [];
+        const keywordStream = [];
+
+        // 扫描所有文件
+        for (let i = 0; i < this.files.length; i++) {
+            const fileInfo = this.files[i];
+
+            try {
+                const data = await this.processFileForOcean(fileInfo.file);
+                const keywords = this.extractKeywordsFromData(data);
+
+                // 记录文件信息
+                fileMapping.push({
+                    fileIndex: i,
+                    fileName: fileInfo.file.name,
+                    fileSize: fileInfo.file.size,
+                    keywordCount: keywords.length,
+                    originalData: data,
+                    processedData: null
+                });
+
+                // 构建关键词流
+                keywords.forEach((keyword, wordIndex) => {
+                    keywordStream.push({
+                        fileIndex: i,
+                        wordIndex: wordIndex,
+                        keyword: keyword,
+                        translation: null
+                    });
+                });
+
+                console.log(`扫描文件 ${i + 1}/${this.files.length}: ${fileInfo.file.name}, ${keywords.length} 个关键词`);
+
+            } catch (error) {
+                console.error(`扫描文件 ${fileInfo.file.name} 失败:`, error);
+                // 即使文件扫描失败，也要记录空文件信息
+                fileMapping.push({
+                    fileIndex: i,
+                    fileName: fileInfo.file.name,
+                    fileSize: fileInfo.file.size,
+                    keywordCount: 0,
+                    originalData: null,
+                    processedData: null,
+                    error: error.message
+                });
+            }
+        }
+
+        return { fileMapping, keywordStream };
+    }
+
+    // 为单词海洋处理单个文件
+    async processFileForOcean(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    resolve(jsonData);
+                } catch (error) {
+                    reject(error);
+                }
+            };
+
+            reader.onerror = () => reject(new Error('文件读取失败'));
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    // 从数据中提取关键词
+    extractKeywordsFromData(data) {
+        if (!data || data.length < 2) return [];
+
+        const headers = data[0];
+        const rows = data.slice(1);
+
+        // 查找Keyword列
+        const keywordIndex = headers.findIndex(h => h && h.toLowerCase().includes('keyword'));
+        if (keywordIndex === -1) {
+            throw new Error('未找到Keyword列');
+        }
+
+        // 提取所有关键词
+        return rows.map(row => row[keywordIndex]).filter(keyword => keyword && keyword.trim());
+    }
+
+    // 阶段2：批次切割和映射
+    createBatchesForOcean(keywordStream) {
+        const batches = [];
+        const batchSize = this.BATCH_SIZE;
+
+        for (let i = 0; i < keywordStream.length; i += batchSize) {
+            const endIndex = Math.min(i + batchSize, keywordStream.length);
+            const batchKeywords = keywordStream.slice(i, endIndex);
+
+            batches.push({
+                batchIndex: Math.floor(i / batchSize),
+                streamStartIndex: i,
+                streamEndIndex: endIndex - 1,
+                keywords: batchKeywords.map(item => item.keyword),
+                streamIndices: batchKeywords.map((_, index) => i + index)
+            });
+        }
+
+        return batches;
+    }
+
+    // 阶段3：并发批次处理
+    async processBatchesForOcean(batches, totalKeywordCount) {
+        const results = new Array(totalKeywordCount);
+        const totalBatches = batches.length;
+
+        // 分组并发处理
+        for (let batchGroup = 0; batchGroup < totalBatches; batchGroup += this.CONCURRENCY_LIMIT) {
+            const currentBatchPromises = [];
+            const currentBatchCount = Math.min(this.CONCURRENCY_LIMIT, totalBatches - batchGroup);
+
+            this.markTime(`批次组${batchGroup}_开始`);
+            this.logPerformance('BATCH_GROUP_START', {
+                batchGroup: batchGroup,
+                batchSize: currentBatchCount,
+                totalBatches: totalBatches
+            });
+
+            console.log(`开始处理批次组 ${batchGroup + 1}-${batchGroup + currentBatchCount}`);
+
+            // 创建当前批次的并发请求
+            for (let j = 0; j < currentBatchCount; j++) {
+                const batchIndex = batchGroup + j;
+                const batch = batches[batchIndex];
+
+                currentBatchPromises.push(
+                    this.translateBatchForOcean(batch, batchIndex)
+                );
+            }
+
+            try {
+                // 等待当前批次组完成
+                const batchResults = await Promise.all(currentBatchPromises);
+                this.markTime(`批次组${batchGroup}_完成`);
+                const batchGroupTime = this.getTimeDiff(`批次组${batchGroup}_开始`, `批次组${batchGroup}_完成`);
+
+                this.logPerformance('BATCH_GROUP_COMPLETE', {
+                    batchGroup: batchGroup,
+                    batchSize: currentBatchCount,
+                    processTime: batchGroupTime,
+                    resultsCount: batchResults.length
+                });
+
+                // 将结果分配到关键词流
+                batchResults.forEach((result, groupIndex) => {
+                    const batchIndex = batchGroup + groupIndex;
+                    const batch = batches[batchIndex];
+
+                    result.translations.forEach((translation, index) => {
+                        const streamIndex = batch.streamIndices[index];
+                        results[streamIndex] = translation;
+                    });
+                });
+
+                console.log(`批次组 ${batchGroup + 1}-${batchGroup + currentBatchCount} 处理完成`);
+
+            } catch (error) {
+                console.error(`批次组 ${batchGroup + 1}-${batchGroup + currentBatchCount} 处理失败:`, error);
+                throw error;
+            }
+        }
+
+        return results;
+    }
+
+    // 为单词海洋翻译批次
+    async translateBatchForOcean(batch, batchIndex) {
+        const prompt = batch.keywords.map((keyword, index) =>
+            `${index + 1}. ${keyword}`
+        ).join('\n');
+
+        const requestStartTime = this.markTime(`海洋批次${batchIndex}_开始`);
+        this.logPerformance('OCEAN_BATCH_REQUEST_START', {
+            batchIndex: batchIndex,
+            keywordCount: batch.keywords.length,
+            promptLength: prompt.length
+        });
+
+        console.log(`开始翻译海洋批次 ${batchIndex + 1}, 关键词数量: ${batch.keywords.length}`);
+
+        let lastError = null;
+
+        // 重试机制
+        for (let attempt = 1; attempt <= this.MAX_RETRIES + 1; attempt++) {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT);
+
+                const apiCallStartTime = this.markTime(`海洋API调用${batchIndex}_尝试${attempt}_开始`);
+                this.logPerformance('OCEAN_API_CALL_START', {
+                    batchIndex: batchIndex,
+                    attempt: attempt,
+                    keywordCount: batch.keywords.length
+                });
+
+                const response = await fetch(`${this.apiConfig.endpoint}/v1/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.apiConfig.key}`
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: [
+                            {
+                                role: 'user',
+                                content: `请将以下关键词翻译成中文，每行一个，按照相同格式返回。不管原词是什么语言，都必须翻译成中文：\n\n${prompt}`
+                            }
+                        ],
+                        max_tokens: Math.min(batch.keywords.length * 20, 4000),
+                        temperature: 0.1
+                    }),
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+                const apiCallEndTime = this.markTime(`海洋API调用${batchIndex}_尝试${attempt}_完成`);
+                const apiCallTime = this.getTimeDiff(`海洋API调用${batchIndex}_尝试${attempt}_开始`, `海洋API调用${batchIndex}_尝试${attempt}_完成`);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API错误详情:', errorText);
+
+                    this.logPerformance('OCEAN_API_CALL_ERROR', {
+                        batchIndex: batchIndex,
+                        attempt: attempt,
+                        status: response.status,
+                        statusText: response.statusText,
+                        apiCallTime: apiCallTime
+                    });
+
+                    throw new Error(`API请求失败: ${response.status} - ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const translationText = data.choices[0].message.content.trim();
+
+                this.logPerformance('OCEAN_API_CALL_SUCCESS', {
+                    batchIndex: batchIndex,
+                    attempt: attempt,
+                    apiCallTime: apiCallTime,
+                    responseLength: translationText.length,
+                    keywordCount: batch.keywords.length
+                });
+
+                // 解析翻译结果
+                const lines = translationText.split('\n').filter(line => line.trim());
+                const translations = [];
+
+                for (let i = 0; i < batch.keywords.length; i++) {
+                    const line = lines[i] || '';
+                    const translation = line.replace(/^\d+\.\s*/, '').replace(/^["']|["']$/g, '').trim();
+                    translations.push(translation || batch.keywords[i]);
+                }
+
+                const requestEndTime = this.markTime(`海洋批次${batchIndex}_完成`);
+                const requestTotalTime = this.getTimeDiff(`海洋批次${batchIndex}_开始`, `海洋批次${batchIndex}_完成`);
+
+                this.logPerformance('OCEAN_BATCH_REQUEST_COMPLETE', {
+                    batchIndex: batchIndex,
+                    totalTime: requestTotalTime,
+                    attempts: attempt,
+                    keywordCount: batch.keywords.length,
+                    success: true
+                });
+
+                console.log(`海洋批次 ${batchIndex} 第${attempt}次尝试翻译完成，成功翻译 ${translations.length} 个关键词`);
+
+                return {
+                    batchIndex: batchIndex,
+                    translations: translations
+                };
+
+            } catch (error) {
+                clearTimeout(timeoutId); // 清理timeoutId，防止abort后续请求
+                lastError = error;
+                console.error(`海洋批次 ${batchIndex} 第${attempt}次尝试失败:`, error);
+
+                this.logPerformance('OCEAN_API_CALL_ATTEMPT_ERROR', {
+                    batchIndex: batchIndex,
+                    attempt: attempt,
+                    error: error.message
+                });
+
+                if (attempt <= this.MAX_RETRIES) {
+                    const delayTime = attempt * 1000;
+                    console.log(`海洋批次 ${batchIndex} 第${attempt}次尝试失败，${delayTime}ms 后重试...`);
+                    await new Promise(resolve => setTimeout(resolve, delayTime));
+                }
+            }
+        }
+
+        // 所有重试都失败，返回原始关键词
+        const requestEndTime = this.markTime(`海洋批次${batchIndex}_失败`);
+        const requestTotalTime = this.getTimeDiff(`海洋批次${batchIndex}_开始`, `海洋批次${batchIndex}_失败`);
+
+        this.logPerformance('OCEAN_BATCH_REQUEST_FAILED', {
+            batchIndex: batchIndex,
+            totalTime: requestTotalTime,
+            keywordCount: batch.keywords.length,
+            error: lastError.message
+        });
+
+        console.error(`海洋批次 ${batchIndex} 所有重试都失败，返回原始关键词`);
+        return {
+            batchIndex: batchIndex,
+            translations: batch.keywords.map(keyword => keyword)
+        };
+    }
+
+    // 阶段4：结果分配和文件重建（包含日志兼容性）
+    async distributeResultsForOcean(translationResults, fileMapping, keywordStream) {
+        // 将翻译结果填充到关键词流
+        translationResults.forEach((translation, index) => {
+            if (keywordStream[index]) {
+                keywordStream[index].translation = translation;
+            }
+        });
+
+        // 按文件重建数据（在此处模拟原有的文件级日志以保持兼容性）
+        for (let fileIndex = 0; fileIndex < fileMapping.length; fileIndex++) {
+            const fileInfo = fileMapping[fileIndex];
+
+            if (!fileInfo.originalData || fileInfo.error) {
+                console.log(`跳过错误文件: ${fileInfo.fileName}`);
+                continue;
+            }
+
+            const fileStartTime = this.markTime(`文件${fileIndex}_开始`);
+
+            // 模拟原有的文件处理开始日志
+            this.logPerformance('FILE_PROCESSING_START', {
+                fileName: fileInfo.fileName,
+                fileSize: fileInfo.fileSize,
+                fileIndex: fileIndex
+            });
+
+            console.log(`开始重建文件: ${fileInfo.fileName}`);
+
+            try {
+                // 重建文件数据
+                const processedData = this.reconstructFileData(fileInfo, keywordStream);
+                const fileEndTime = this.markTime(`文件${fileIndex}_完成`);
+                const fileProcessTime = this.getTimeDiff(`文件${fileIndex}_开始`, `文件${fileIndex}_完成`);
+
+                fileInfo.processedData = processedData;
+
+                // 模拟原有的文件处理完成日志
+                this.logPerformance('FILE_PROCESSING_COMPLETE', {
+                    fileName: fileInfo.fileName,
+                    processTime: fileProcessTime,
+                    rowsGenerated: processedData.length - 1,
+                    fileIndex: fileIndex
+                });
+
+                console.log(`重建完成: ${fileInfo.fileName}, 生成${processedData.length - 1}行数据, 耗时${fileProcessTime}ms`);
+
+            } catch (error) {
+                const fileEndTime = this.markTime(`文件${fileIndex}_失败`);
+                const fileProcessTime = this.getTimeDiff(`文件${fileIndex}_开始`, `文件${fileIndex}_失败`);
+
+                // 模拟原有的文件处理错误日志
+                this.logPerformance('FILE_PROCESSING_ERROR', {
+                    fileName: fileInfo.fileName,
+                    processTime: fileProcessTime,
+                    error: error.message,
+                    fileIndex: fileIndex
+                });
+
+                console.error(`重建文件 ${fileInfo.fileName} 失败:`, error);
+            }
+        }
+
+        return fileMapping;
+    }
+
+    // 重建文件数据
+    reconstructFileData(fileInfo, keywordStream) {
+        const originalData = fileInfo.originalData;
+        const headers = originalData[0];
+        const rows = originalData.slice(1);
+
+        // 查找列索引
+        const keywordIndex = headers.findIndex(h => h && h.toLowerCase().includes('keyword'));
+        const volumeIndex = headers.findIndex(h => h && h.toLowerCase().includes('volume'));
+        const difficultyIndex = headers.findIndex(h => h && h.toLowerCase().includes('difficulty'));
+        const cpcIndex = headers.findIndex(h => h && h.toLowerCase().includes('cpc'));
+
+        if (keywordIndex === -1) {
+            throw new Error('未找到Keyword列');
+        }
+
+        // 构建新的表头
+        const newHeaders = [...headers];
+        newHeaders.splice(keywordIndex + 1, 0, 'Translation');
+
+        // 计算CPC列的位置
+        const cpcPosition = cpcIndex !== -1 ? cpcIndex + (cpcIndex > keywordIndex ? 1 : 0) : headers.length;
+        newHeaders.splice(cpcPosition + 1, 0, 'Kdroi');
+        newHeaders.splice(cpcPosition + 2, 0, 'SERP');
+        newHeaders.splice(cpcPosition + 3, 0, 'Google Trends');
+        newHeaders.splice(cpcPosition + 4, 0, 'Ahrefs Keyword Difficulty Checker');
+
+        // 找到属于这个文件的所有关键词
+        const fileKeywords = keywordStream.filter(item => item.fileIndex === fileInfo.fileIndex);
+
+        const processedRows = [];
+
+        // 处理每一行数据
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const newRow = [...row];
+            const keyword = row[keywordIndex];
+
+            // 找到对应的翻译结果
+            const keywordInfo = fileKeywords.find(item => item.wordIndex === i);
+            const translation = keywordInfo ? keywordInfo.translation : keyword;
+
+            // 插入翻译
+            newRow.splice(keywordIndex + 1, 0, translation);
+
+            // 计算Kdroi
+            const volume = parseFloat(row[volumeIndex]) || 0;
+            const difficulty = parseFloat(row[difficultyIndex]) || 1;
+            const cpc = parseFloat(row[cpcIndex]) || 0;
+            const kdroi = difficulty > 0 ? parseFloat(((volume * cpc) / difficulty).toFixed(2)) : 0.00;
+
+            // 计算CPC列在新行中的位置
+            const adjustedCpcIndex = cpcIndex !== -1 ? cpcIndex + (cpcIndex > keywordIndex ? 1 : 0) : newRow.length - 4;
+            newRow.splice(adjustedCpcIndex + 1, 0, kdroi);
+
+            // 生成链接
+            const serpLink = `https://www.google.com/search?q=${encodeURIComponent(keyword)}`;
+            const trendsLink = `https://trends.google.com/trends/explore?q=${encodeURIComponent(keyword)}`;
+            const ahrefsLink = `https://ahrefs.com/keyword-difficulty/?country=us&input=${encodeURIComponent(keyword)}`;
+
+            newRow.splice(adjustedCpcIndex + 2, 0, serpLink);
+            newRow.splice(adjustedCpcIndex + 3, 0, trendsLink);
+            newRow.splice(adjustedCpcIndex + 4, 0, ahrefsLink);
+
+            processedRows.push(newRow);
+        }
+
+        return [newHeaders, ...processedRows];
     }
 }
 
