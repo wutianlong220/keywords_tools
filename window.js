@@ -9,7 +9,7 @@ class KeywordProcessor {
         };
 
         // 并发处理核心常量
-        this.BATCH_SIZE = 80;           // 每批关键词数量
+        this.BATCH_SIZE = 20;           // 每批关键词数量（从80改为20以处理长尾关键词）
         this.CONCURRENCY_LIMIT = 25;    // 并发数量
         this.REQUEST_TIMEOUT = 30000;   // 请求超时时间
         this.MAX_RETRIES = 2;           // 最大重试次数
@@ -694,6 +694,7 @@ class KeywordProcessor {
                 };
 
             } catch (error) {
+                clearTimeout(timeoutId); // 清理timeoutId，防止abort后续请求
                 lastError = error;
                 console.error(`批次 ${startIndex} 第${attempt}次尝试失败:`, error);
 
