@@ -168,9 +168,84 @@
         }
 
         .config-section {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
+            display: flex;
+            gap: 20px;
+        }
+
+        .config-left, .config-right {
+            flex: 1;
+        }
+
+        .input-with-range {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .input-with-range input {
+            flex: 1;
+        }
+
+        .range-hint {
+            font-size: 12px;
+            color: #666;
+            white-space: nowrap;
+        }
+
+        .config-actions {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 15px;
             gap: 10px;
+        }
+
+        .help-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #667eea;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .help-icon:hover {
+            background-color: #764ba2;
+            transform: scale(1.1);
+        }
+
+        .tooltip {
+            position: absolute;
+            background-color: #333;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+            max-width: 250px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .tooltip.show {
+            opacity: 1;
+        }
+
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #333;
         }
 
         .input-group {
@@ -229,18 +304,39 @@
         </div>
 
         <div class="section">
-            <h2>🔧 API配置</h2>
+            <h2>🔧 插件配置</h2>
             <div class="config-section">
-                <div class="input-group">
-                    <label for="apiEndpoint">API地址:</label>
-                    <input type="url" id="apiEndpoint" placeholder="请填写API地址">
+                <div class="config-left">
+                    <div class="input-group">
+                        <label for="apiEndpoint">API地址:</label>
+                        <input type="url" id="apiEndpoint" placeholder="请填写API地址">
+                    </div>
+                    <div class="input-group">
+                        <label for="apiKey">API密钥:</label>
+                        <input type="password" id="apiKey" placeholder="输入您的API密钥">
+                    </div>
                 </div>
-                <div class="input-group">
-                    <label for="apiKey">API密钥:</label>
-                    <input type="password" id="apiKey" placeholder="输入您的API密钥">
+                <div class="config-right">
+                    <div class="input-group">
+                        <label for="batchSize">翻译数量:</label>
+                        <div class="input-with-range">
+                            <input type="number" id="batchSize" min="15" max="85" placeholder="40">
+                            <span class="range-hint">15-85</span>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="concurrencyLimit">并发数:</label>
+                        <div class="input-with-range">
+                            <input type="number" id="concurrencyLimit" min="2" max="25" placeholder="25">
+                            <span class="range-hint">2-25</span>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <button class="btn" id="saveConfig">保存配置</button>
+            <div class="config-actions">
+                <button class="btn" id="saveConfig">保存配置</button>
+                <span class="help-icon" id="helpIcon" title="每次请求最多处理85个单词，数量太多容易导致长尾词翻译不完全，数量太少则会导致文件处理速度太慢。请根据实际情况自行填写。">?</span>
+            </div>
         </div>
 
         <div class="section">
@@ -278,5 +374,8 @@
 
     <script src="xlsx.full.min.js"></script>
     <script src="window.js"></script>
+
+    <!-- Tooltip元素 -->
+    <div class="tooltip" id="tooltip"></div>
 </body>
 </html>

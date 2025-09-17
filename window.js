@@ -3,14 +3,20 @@ class KeywordProcessor {
         this.files = [];
         this.processedFiles = [];
         this.isProcessing = false;
+
+        // API配置
         this.apiConfig = {
             endpoint: '',
             key: ''
         };
 
-        // 并发处理核心常量
-        this.BATCH_SIZE = 20;           // 每批关键词数量（从80改为20以处理长尾关键词）
-        this.CONCURRENCY_LIMIT = 25;    // 并发数量
+        // 处理参数配置
+        this.processingConfig = {
+            batchSize: 40,              // 翻译数量，默认40
+            concurrencyLimit: 25       // 并发数，默认25
+        };
+
+        // 其他常量
         this.REQUEST_TIMEOUT = 30000;   // 请求超时时间
         this.MAX_RETRIES = 2;           // 最大重试次数
 
@@ -40,6 +46,14 @@ class KeywordProcessor {
 
         // API配置相关
         document.getElementById('saveConfig').addEventListener('click', this.saveApiConfig.bind(this));
+
+        // 帮助图标tooltip
+        document.getElementById('helpIcon').addEventListener('mouseenter', this.showTooltip.bind(this));
+        document.getElementById('helpIcon').addEventListener('mouseleave', this.hideTooltip.bind(this));
+
+        // 输入验证事件
+        document.getElementById('batchSize').addEventListener('input', this.validateBatchSizeInput.bind(this));
+        document.getElementById('concurrencyLimit').addEventListener('input', this.validateConcurrencyLimitInput.bind(this));
 
         // 操作按钮
         document.getElementById('processBtn').addEventListener('click', this.startProcessing.bind(this));
@@ -115,45 +129,144 @@ class KeywordProcessor {
 
     async loadApiConfig() {
         try {
-            const result = await chrome.storage.local.get(['deepseek_api_endpoint', 'deepseek_api_key']);
+            // 加载所有配置
+            const result = await chrome.storage.local.get([
+                'deepseek_api_endpoint',
+                'deepseek_api_key',
+                'batch_size',
+                'concurrency_limit'
+            ]);
+
+            // API配置
             this.apiConfig.endpoint = result.deepseek_api_endpoint || '';
             this.apiConfig.key = result.deepseek_api_key || '';
 
+            // 处理参数配置
+            this.processingConfig.batchSize = result.batch_size || 40;
+            this.processingConfig.concurrencyLimit = result.concurrency_limit || 25;
+
+            // 设置界面值
+            const batchSizeInput = document.getElementById('batchSize');
+            const concurrencyLimitInput = document.getElementById('concurrencyLimit');
+
             document.getElementById('apiEndpoint').value = this.apiConfig.endpoint;
             document.getElementById('apiKey').value = this.apiConfig.key;
+            batchSizeInput.value = this.processingConfig.batchSize;
+            concurrencyLimitInput.value = this.processingConfig.concurrencyLimit;
+
+            // 设置占位符和默认值
+            if (!batchSizeInput.value) {
+                batchSizeInput.value = '40';
+            }
+            if (!concurrencyLimitInput.value) {
+                concurrencyLimitInput.value = '25';
+            }
 
             if (this.apiConfig.endpoint && this.apiConfig.key) {
                 console.log('API配置已加载');
             }
+            console.log(`处理参数已加载 - 批次大小: ${this.processingConfig.batchSize}, 并发数: ${this.processingConfig.concurrencyLimit}`);
 
             this.updateProcessButton();
         } catch (error) {
-            console.error('加载API配置失败:', error);
+            console.error('加载配置失败:', error);
         }
     }
 
     async saveApiConfig() {
         const endpoint = document.getElementById('apiEndpoint').value.trim();
         const key = document.getElementById('apiKey').value.trim();
+        const batchSize = parseInt(document.getElementById('batchSize').value);
+        const concurrencyLimit = parseInt(document.getElementById('concurrencyLimit').value);
 
+        // 验证API配置
         if (!endpoint || !key) {
             this.showNotification('请填写完整的API配置', 'error');
             return;
         }
 
+        // 验证处理参数配置
+        if (!this.validateBatchSize(batchSize)) {
+            this.showNotification('翻译数量必须在15-85之间', 'error');
+            return;
+        }
+
+        if (!this.validateConcurrencyLimit(concurrencyLimit)) {
+            this.showNotification('并发数必须在2-25之间', 'error');
+            return;
+        }
+
         try {
+            // 保存所有配置
             await chrome.storage.local.set({
                 'deepseek_api_endpoint': endpoint,
-                'deepseek_api_key': key
+                'deepseek_api_key': key,
+                'batch_size': batchSize,
+                'concurrency_limit': concurrencyLimit
             });
 
+            // 更新内存中的配置
             this.apiConfig.endpoint = endpoint;
             this.apiConfig.key = key;
+            this.processingConfig.batchSize = batchSize;
+            this.processingConfig.concurrencyLimit = concurrencyLimit;
 
-            this.showNotification('API配置保存成功', 'success');
+            // 清除输入验证状态
+            document.getElementById('batchSize').style.borderColor = '';
+            document.getElementById('concurrencyLimit').style.borderColor = '';
+
+            this.showNotification('插件配置保存成功', 'success');
             this.updateProcessButton();
+            console.log(`配置已保存 - 批次大小: ${batchSize}, 并发数: ${concurrencyLimit}`);
         } catch (error) {
-            this.showNotification('API配置保存失败', 'error');
+            console.error('配置保存失败:', error);
+            this.showNotification('配置保存失败', 'error');
+        }
+    }
+
+    // 验证批次大小
+    validateBatchSize(value) {
+        const num = parseInt(value);
+        return !isNaN(num) && num >= 15 && num <= 85;
+    }
+
+    // 验证并发数
+    validateConcurrencyLimit(value) {
+        const num = parseInt(value);
+        return !isNaN(num) && num >= 2 && num <= 25;
+    }
+
+    // 实时验证批次大小输入
+    validateBatchSizeInput(event) {
+        const input = event.target;
+        const value = input.value;
+
+        if (value === '') {
+            input.style.borderColor = '';
+            return;
+        }
+
+        if (this.validateBatchSize(value)) {
+            input.style.borderColor = '#28a745';
+        } else {
+            input.style.borderColor = '#dc3545';
+        }
+    }
+
+    // 实时验证并发数输入
+    validateConcurrencyLimitInput(event) {
+        const input = event.target;
+        const value = input.value;
+
+        if (value === '') {
+            input.style.borderColor = '';
+            return;
+        }
+
+        if (this.validateConcurrencyLimit(value)) {
+            input.style.borderColor = '#28a745';
+        } else {
+            input.style.borderColor = '#dc3545';
         }
     }
 
@@ -296,7 +409,7 @@ class KeywordProcessor {
             const batchCreationStartTime = this.markTime('批次切割开始');
             this.logPerformance('BATCH_CREATION_START', {
                 keywordCount: keywordStream.length,
-                batchSize: this.BATCH_SIZE
+                batchSize: this.processingConfig.batchSize
             });
 
             const batches = this.createBatchesForOcean(keywordStream);
@@ -316,7 +429,7 @@ class KeywordProcessor {
             const batchProcessingStartTime = this.markTime('批次处理开始');
             this.logPerformance('BATCH_PROCESSING_START', {
                 batchCount: batches.length,
-                concurrencyLimit: this.CONCURRENCY_LIMIT
+                concurrencyLimit: this.processingConfig.concurrencyLimit
             });
 
             // 初始化关键词进度跟踪
@@ -465,8 +578,8 @@ class KeywordProcessor {
             console.log(`需要翻译 ${keywordsToTranslate.length} 个关键词，使用并发处理`);
 
             // 计算总批次数
-            const totalBatches = Math.ceil(keywordsToTranslate.length / this.BATCH_SIZE);
-            console.log(`总共分为 ${totalBatches} 批，每批 ${this.BATCH_SIZE} 个关键词，并发数 ${this.CONCURRENCY_LIMIT}`);
+            const totalBatches = Math.ceil(keywordsToTranslate.length / this.processingConfig.batchSize);
+            console.log(`总共分为 ${totalBatches} 批，每批 ${this.processingConfig.batchSize} 个关键词，并发数 ${this.processingConfig.concurrencyLimit}`);
 
             // 初始化结果数组
             const finalTranslations = new Array(keywords.length);
@@ -479,10 +592,10 @@ class KeywordProcessor {
             }
 
             // 并发处理所有批次
-            for (let batchGroup = 0; batchGroup < totalBatches; batchGroup += this.CONCURRENCY_LIMIT) {
+            for (let batchGroup = 0; batchGroup < totalBatches; batchGroup += this.processingConfig.concurrencyLimit) {
                 const batchGroupStartTime = this.markTime(`批次组${batchGroup}_开始`);
                 const currentBatchPromises = [];
-                const currentBatchCount = Math.min(this.CONCURRENCY_LIMIT, totalBatches - batchGroup);
+                const currentBatchCount = Math.min(this.processingConfig.concurrencyLimit, totalBatches - batchGroup);
 
                 this.logPerformance('BATCH_GROUP_START', {
                     batchGroup: batchGroup,
@@ -495,8 +608,8 @@ class KeywordProcessor {
                 // 创建当前批次的并发请求
                 for (let j = 0; j < currentBatchCount; j++) {
                     const batchIndex = batchGroup + j;
-                    const startIndex = batchIndex * this.BATCH_SIZE;
-                    const endIndex = Math.min(startIndex + this.BATCH_SIZE, keywordsToTranslate.length);
+                    const startIndex = batchIndex * this.processingConfig.batchSize;
+                    const endIndex = Math.min(startIndex + this.processingConfig.batchSize, keywordsToTranslate.length);
                     const batchKeywords = keywordsToTranslate.slice(startIndex, endIndex);
 
                     this.logPerformance('BATCH_REQUEST_CREATED', {
@@ -881,6 +994,29 @@ class KeywordProcessor {
         }, 3000);
     }
 
+    // 显示tooltip
+    showTooltip(event) {
+        const helpIcon = document.getElementById('helpIcon');
+        const tooltip = document.getElementById('tooltip');
+        const tooltipText = '每次请求最多处理85个单词，数量太多容易导致长尾词翻译不完全，数量太少则会导致文件处理速度太慢。请根据实际情况自行填写。';
+
+        tooltip.textContent = tooltipText;
+
+        // 计算位置
+        const iconRect = helpIcon.getBoundingClientRect();
+        tooltip.style.left = iconRect.left + 'px';
+        tooltip.style.top = (iconRect.bottom + 10) + 'px';
+        tooltip.style.transform = 'translateX(-50%)';
+
+        tooltip.classList.add('show');
+    }
+
+    // 隐藏tooltip
+    hideTooltip() {
+        const tooltip = document.getElementById('tooltip');
+        tooltip.classList.remove('show');
+    }
+
     // 获取日志数据
     getKeywordToolLogs() {
         return {
@@ -1057,7 +1193,7 @@ class KeywordProcessor {
     // 阶段2：批次切割和映射
     createBatchesForOcean(keywordStream) {
         const batches = [];
-        const batchSize = this.BATCH_SIZE;
+        const batchSize = this.processingConfig.batchSize;
 
         for (let i = 0; i < keywordStream.length; i += batchSize) {
             const endIndex = Math.min(i + batchSize, keywordStream.length);
@@ -1081,9 +1217,9 @@ class KeywordProcessor {
         const totalBatches = batches.length;
 
         // 分组并发处理
-        for (let batchGroup = 0; batchGroup < totalBatches; batchGroup += this.CONCURRENCY_LIMIT) {
+        for (let batchGroup = 0; batchGroup < totalBatches; batchGroup += this.processingConfig.concurrencyLimit) {
             const currentBatchPromises = [];
-            const currentBatchCount = Math.min(this.CONCURRENCY_LIMIT, totalBatches - batchGroup);
+            const currentBatchCount = Math.min(this.processingConfig.concurrencyLimit, totalBatches - batchGroup);
 
             this.markTime(`批次组${batchGroup}_开始`);
             this.logPerformance('BATCH_GROUP_START', {
@@ -1130,7 +1266,7 @@ class KeywordProcessor {
 
                 // 更新关键词进度（考虑最后一个批次可能不满）
                 const actualProcessedInThisGroup = Math.min(
-                    currentBatchCount * this.BATCH_SIZE,
+                    currentBatchCount * this.processingConfig.batchSize,
                     this.oceanKeywordProgress.total - this.oceanKeywordProgress.processed
                 );
                 this.oceanKeywordProgress.processed += actualProcessedInThisGroup;
