@@ -10,9 +10,14 @@ class KeywordProcessor {
 
         // 并发处理核心常量
         this.BATCH_SIZE = 80;           // 每批关键词数量
-        this.CONCURRENCY_LIMIT = 5;     // 并发数量
+        this.CONCURRENCY_LIMIT = 25;    // 并发数量
         this.REQUEST_TIMEOUT = 30000;   // 请求超时时间
         this.MAX_RETRIES = 2;           // 最大重试次数
+
+        // 性能日志收集系统
+        this.performanceLogs = [];
+        this.timeMarkers = {};
+        this.currentSessionId = Date.now();
 
         this.init();
     }
@@ -20,6 +25,7 @@ class KeywordProcessor {
     init() {
         this.loadApiConfig();
         this.setupEventListeners();
+        this.setupPerformanceLogging();
     }
 
     setupEventListeners() {
@@ -39,6 +45,104 @@ class KeywordProcessor {
         document.getElementById('processBtn').addEventListener('click', this.startProcessing.bind(this));
         document.getElementById('downloadBtn').addEventListener('click', this.downloadMergedFile.bind(this));
         document.getElementById('clearBtn').addEventListener('click', this.clearFiles.bind(this));
+
+        // 日志按钮
+        document.getElementById('viewLogsBtn').addEventListener('click', this.viewLogs.bind(this));
+        document.getElementById('exportLogsBtn').addEventListener('click', this.exportLogs.bind(this));
+        document.getElementById('clearLogsBtn').addEventListener('click', this.clearLogs.bind(this));
+    }
+
+    setupPerformanceLogging() {
+        // 添加全局日志读取功能
+        window.getKeywordToolLogs = () => {
+            return {
+                sessionId: this.currentSessionId,
+                logs: this.performanceLogs,
+                timeMarkers: this.timeMarkers,
+                summary: this.generatePerformanceSummary()
+            };
+        };
+
+        // 添加清空日志功能
+        window.clearKeywordToolLogs = () => {
+            this.performanceLogs = [];
+            this.timeMarkers = {};
+            this.currentSessionId = Date.now();
+            console.log('关键词工具日志已清空');
+        };
+
+        // 添加导出日志功能
+        window.exportKeywordToolLogs = () => {
+            const logsData = window.getKeywordToolLogs();
+            const blob = new Blob([JSON.stringify(logsData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `keyword-tool-logs-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        console.log('关键词工具性能日志已启用');
+        console.log('使用 window.getKeywordToolLogs() 查看日志');
+        console.log('使用 window.clearKeywordToolLogs() 清空日志');
+        console.log('使用 window.exportKeywordToolLogs() 导出日志');
+    }
+
+    // 日志记录方法
+    logPerformance(action, details = {}) {
+        const logEntry = {
+            timestamp: Date.now(),
+            session: this.currentSessionId,
+            action: action,
+            details: details,
+            memoryUsage: performance.memory ? {
+                used: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),
+                total: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024),
+                limit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024)
+            } : null
+        };
+
+        this.performanceLogs.push(logEntry);
+
+        // 同时输出到控制台
+        console.log(`[关键词工具] ${action}`, details);
+    }
+
+    // 时间标记方法
+    markTime(markerName) {
+        const timestamp = Date.now();
+        this.timeMarkers[markerName] = timestamp;
+        this.logPerformance(`TIME_MARKER_${markerName}`, { timestamp });
+        return timestamp;
+    }
+
+    // 计算时间差
+    getTimeDiff(startMarker, endMarker = null) {
+        const endTime = endMarker ? this.timeMarkers[endMarker] : Date.now();
+        const startTime = this.timeMarkers[startMarker];
+        return startTime ? endTime - startTime : null;
+    }
+
+    // 生成性能摘要
+    generatePerformanceSummary() {
+        const sessionLogs = this.performanceLogs.filter(log => log.session === this.currentSessionId);
+        const summary = {
+            sessionId: this.currentSessionId,
+            totalLogs: sessionLogs.length,
+            startTime: sessionLogs[0]?.timestamp || null,
+            endTime: sessionLogs[sessionLogs.length - 1]?.timestamp || null,
+            totalTime: null,
+            apiCalls: sessionLogs.filter(log => log.action.includes('API')),
+            fileOperations: sessionLogs.filter(log => log.action.includes('FILE')),
+            timeMarkers: this.timeMarkers
+        };
+
+        if (summary.startTime && summary.endTime) {
+            summary.totalTime = summary.endTime - summary.startTime;
+        }
+
+        return summary;
     }
 
     async loadApiConfig() {
@@ -175,9 +279,16 @@ class KeywordProcessor {
     async startProcessing() {
         if (this.isProcessing) return;
 
+        // 清空之前的日志，开始新的会话
+        this.clearPreviousLogs();
+
         this.isProcessing = true;
         this.processedFiles = [];
         this.updateProcessButton();
+
+        // 开始性能监控
+        this.markTime('处理开始');
+        this.logPerformance('处理开始', { fileCount: this.files.length });
 
         console.log(`开始处理 ${this.files.length} 个文件`);
 
@@ -189,10 +300,20 @@ class KeywordProcessor {
                 this.updateFileList();
                 this.updateProgress(i, this.files.length);
 
+                const fileStartTime = this.markTime(`文件${i}_开始`);
+                this.logPerformance('FILE_PROCESSING_START', {
+                    fileName: fileInfo.file.name,
+                    fileSize: fileInfo.file.size,
+                    fileIndex: i
+                });
+
                 console.log(`开始处理: ${fileInfo.file.name}`);
 
                 try {
                     const processedData = await this.processFile(fileInfo.file);
+                    const fileEndTime = this.markTime(`文件${i}_完成`);
+                    const fileProcessTime = this.getTimeDiff(`文件${i}_开始`, `文件${i}_完成`);
+
                     fileInfo.processedData = processedData;
                     fileInfo.status = 'completed';
                     this.processedFiles.push({
@@ -200,9 +321,27 @@ class KeywordProcessor {
                         data: processedData
                     });
 
-                    console.log(`处理完成: ${fileInfo.file.name}, 生成${processedData.length - 1}行数据`);
+                    this.logPerformance('FILE_PROCESSING_COMPLETE', {
+                        fileName: fileInfo.file.name,
+                        processTime: fileProcessTime,
+                        rowsGenerated: processedData.length - 1,
+                        fileIndex: i
+                    });
+
+                    console.log(`处理完成: ${fileInfo.file.name}, 生成${processedData.length - 1}行数据, 耗时${fileProcessTime}ms`);
                 } catch (error) {
+                    const fileEndTime = this.markTime(`文件${i}_失败`);
+                    const fileProcessTime = this.getTimeDiff(`文件${i}_开始`, `文件${i}_失败`);
+
                     fileInfo.status = 'error';
+
+                    this.logPerformance('FILE_PROCESSING_ERROR', {
+                        fileName: fileInfo.file.name,
+                        processTime: fileProcessTime,
+                        error: error.message,
+                        fileIndex: i
+                    });
+
                     console.error(`处理文件 ${fileInfo.file.name} 失败:`, error);
                 }
 
@@ -210,14 +349,32 @@ class KeywordProcessor {
             }
 
             this.updateProgress(this.files.length, this.files.length);
+            this.markTime('处理完成');
+            const totalTime = this.getTimeDiff('处理开始', '处理完成');
+
+            this.logPerformance('处理完成', {
+                totalFiles: this.files.length,
+                successFiles: this.processedFiles.length,
+                failedFiles: this.files.length - this.processedFiles.length,
+                totalTime: totalTime
+            });
+
             this.showNotification('所有文件处理完成', 'success');
 
-            console.log(`所有文件处理完成, 成功:${this.processedFiles.length}个, 失败:${this.files.length - this.processedFiles.length}个`);
+            console.log(`所有文件处理完成, 成功:${this.processedFiles.length}个, 失败:${this.files.length - this.processedFiles.length}个, 总耗时:${totalTime}ms`);
 
             // 启用下载按钮
             document.getElementById('downloadBtn').disabled = false;
 
         } catch (error) {
+            this.markTime('处理失败');
+            const totalTime = this.getTimeDiff('处理开始', '处理失败');
+
+            this.logPerformance('处理失败', {
+                error: error.message,
+                totalTime: totalTime
+            });
+
             console.error('处理过程中出现错误:', error);
             this.showNotification('处理过程中出现错误', 'error');
         } finally {
@@ -327,6 +484,12 @@ class KeywordProcessor {
             return [];
         }
 
+        this.markTime('批量翻译开始');
+        this.logPerformance('TRANSLATION_START', {
+            keywordCount: keywords.length,
+            totalRows: totalRows
+        });
+
         console.log(`并发批量翻译 ${keywords.length} 个关键词`);
 
         try {
@@ -365,8 +528,15 @@ class KeywordProcessor {
 
             // 并发处理所有批次
             for (let batchGroup = 0; batchGroup < totalBatches; batchGroup += this.CONCURRENCY_LIMIT) {
+                const batchGroupStartTime = this.markTime(`批次组${batchGroup}_开始`);
                 const currentBatchPromises = [];
                 const currentBatchCount = Math.min(this.CONCURRENCY_LIMIT, totalBatches - batchGroup);
+
+                this.logPerformance('BATCH_GROUP_START', {
+                    batchGroup: batchGroup,
+                    batchSize: currentBatchCount,
+                    totalBatches: totalBatches
+                });
 
                 console.log(`开始处理批次组 ${batchGroup + 1}-${batchGroup + currentBatchCount}`);
 
@@ -377,6 +547,13 @@ class KeywordProcessor {
                     const endIndex = Math.min(startIndex + this.BATCH_SIZE, keywordsToTranslate.length);
                     const batchKeywords = keywordsToTranslate.slice(startIndex, endIndex);
 
+                    this.logPerformance('BATCH_REQUEST_CREATED', {
+                        batchIndex: batchIndex,
+                        startIndex: startIndex,
+                        endIndex: endIndex,
+                        keywordCount: batchKeywords.length
+                    });
+
                     console.log(`创建翻译请求: 批次${batchIndex + 1}, 关键词${startIndex + 1}-${endIndex}`);
 
                     // 创建带索引的翻译请求
@@ -386,6 +563,15 @@ class KeywordProcessor {
                 try {
                     // 等待当前批次组的所有并发请求完成
                     const batchResults = await Promise.all(currentBatchPromises);
+                    const batchGroupEndTime = this.markTime(`批次组${batchGroup}_完成`);
+                    const batchGroupTime = this.getTimeDiff(`批次组${batchGroup}_开始`, `批次组${batchGroup}_完成`);
+
+                    this.logPerformance('BATCH_GROUP_COMPLETE', {
+                        batchGroup: batchGroup,
+                        batchSize: currentBatchCount,
+                        processTime: batchGroupTime,
+                        resultsCount: batchResults.length
+                    });
 
                     // 按索引组装结果
                     batchResults.forEach(result => {
@@ -413,10 +599,29 @@ class KeywordProcessor {
                 }
             }
 
-            console.log('并发批量翻译完成');
+            this.markTime('批量翻译完成');
+            const totalTranslationTime = this.getTimeDiff('批量翻译开始', '批量翻译完成');
+
+            this.logPerformance('TRANSLATION_COMPLETE', {
+                keywordCount: keywords.length,
+                totalTime: totalTranslationTime,
+                avgTimePerKeyword: Math.round(totalTranslationTime / keywords.length),
+                totalBatches: totalBatches
+            });
+
+            console.log(`并发批量翻译完成, 总耗时:${totalTranslationTime}ms, 平均每个关键词:${Math.round(totalTranslationTime / keywords.length)}ms`);
             return finalTranslations;
 
         } catch (error) {
+            this.markTime('批量翻译失败');
+            const totalTranslationTime = this.getTimeDiff('批量翻译开始', '批量翻译失败');
+
+            this.logPerformance('TRANSLATION_ERROR', {
+                error: error.message,
+                totalTime: totalTranslationTime,
+                keywordCount: keywords.length
+            });
+
             console.error('并发批量翻译失败:', error);
             return keywords; // 翻译失败时返回原词
         }
@@ -480,6 +685,13 @@ class KeywordProcessor {
             `${index + 1}. ${item.keyword}`
         ).join('\n');
 
+        const requestStartTime = this.markTime(`API请求${startIndex}_开始`);
+        this.logPerformance('API_REQUEST_START', {
+            startIndex: startIndex,
+            keywordCount: batch.length,
+            promptLength: prompt.length
+        });
+
         console.log(`开始翻译批次 ${startIndex + 1}-${startIndex + batch.length}，共 ${batch.length} 个关键词`);
 
         let lastError = null;
@@ -490,6 +702,13 @@ class KeywordProcessor {
                 // 添加超时控制
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), this.REQUEST_TIMEOUT);
+
+                const apiCallStartTime = this.markTime(`API调用${startIndex}_尝试${attempt}_开始`);
+                this.logPerformance('API_CALL_START', {
+                    startIndex: startIndex,
+                    attempt: attempt,
+                    keywordCount: batch.length
+                });
 
                 const response = await fetch(`${this.apiConfig.endpoint}/v1/chat/completions`, {
                     method: 'POST',
@@ -512,17 +731,36 @@ class KeywordProcessor {
                 });
 
                 clearTimeout(timeoutId);
+                const apiCallEndTime = this.markTime(`API调用${startIndex}_尝试${attempt}_完成`);
+                const apiCallTime = this.getTimeDiff(`API调用${startIndex}_尝试${attempt}_开始`, `API调用${startIndex}_尝试${attempt}_完成`);
 
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error('API错误详情:', errorText);
+
+                    this.logPerformance('API_CALL_ERROR', {
+                        startIndex: startIndex,
+                        attempt: attempt,
+                        status: response.status,
+                        statusText: response.statusText,
+                        apiCallTime: apiCallTime
+                    });
+
                     throw new Error(`API请求失败: ${response.status} - ${response.statusText}`);
                 }
 
                 const data = await response.json();
                 const translationText = data.choices[0].message.content.trim();
 
-                console.log(`批次 ${startIndex} 第${attempt}次尝试翻译响应长度: ${translationText.length}`);
+                this.logPerformance('API_CALL_SUCCESS', {
+                    startIndex: startIndex,
+                    attempt: attempt,
+                    apiCallTime: apiCallTime,
+                    responseLength: translationText.length,
+                    keywordCount: batch.length
+                });
+
+                console.log(`批次 ${startIndex} 第${attempt}次尝试翻译响应长度: ${translationText.length}, API耗时:${apiCallTime}ms`);
 
                 // 解析翻译结果
                 const lines = translationText.split('\n').filter(line => line.trim());
@@ -537,6 +775,17 @@ class KeywordProcessor {
 
                 console.log(`批次 ${startIndex} 第${attempt}次尝试翻译完成，成功翻译 ${translations.length} 个关键词`);
 
+                const requestEndTime = this.markTime(`API请求${startIndex}_完成`);
+                const requestTotalTime = this.getTimeDiff(`API请求${startIndex}_开始`, `API请求${startIndex}_完成`);
+
+                this.logPerformance('API_REQUEST_COMPLETE', {
+                    startIndex: startIndex,
+                    totalTime: requestTotalTime,
+                    attempts: attempt,
+                    keywordCount: batch.length,
+                    success: true
+                });
+
                 // 返回带索引的结果
                 return {
                     startIndex: startIndex,
@@ -546,6 +795,12 @@ class KeywordProcessor {
             } catch (error) {
                 lastError = error;
                 console.error(`批次 ${startIndex} 第${attempt}次尝试失败:`, error);
+
+                this.logPerformance('API_CALL_ATTEMPT_ERROR', {
+                    startIndex: startIndex,
+                    attempt: attempt,
+                    error: error.message
+                });
 
                 // 如果不是最后一次尝试，等待一段时间后重试
                 if (attempt <= this.MAX_RETRIES) {
@@ -557,6 +812,16 @@ class KeywordProcessor {
         }
 
         // 所有重试都失败，返回原始关键词
+        const requestEndTime = this.markTime(`API请求${startIndex}_失败`);
+        const requestTotalTime = this.getTimeDiff(`API请求${startIndex}_开始`, `API请求${startIndex}_失败`);
+
+        this.logPerformance('API_REQUEST_FAILED', {
+            startIndex: startIndex,
+            totalTime: requestTotalTime,
+            keywordCount: batch.length,
+            error: lastError.message
+        });
+
         console.error(`批次 ${startIndex} 所有重试都失败，返回原始关键词`);
         return {
             startIndex: startIndex,
@@ -682,6 +947,16 @@ class KeywordProcessor {
         document.getElementById('progressText').textContent = '等待上传文件...';
     }
 
+    // 清空之前的日志，开始新的会话
+    clearPreviousLogs() {
+        this.performanceLogs = [];
+        this.timeMarkers = {};
+        this.currentSessionId = Date.now();
+
+        console.log('=== 新的日志会话开始 ===');
+        console.log(`会话ID: ${this.currentSessionId}`);
+    }
+
     showNotification(message, type = 'info') {
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
@@ -698,6 +973,67 @@ class KeywordProcessor {
                 }
             }, 300);
         }, 3000);
+    }
+
+    // 查看日志
+    viewLogs() {
+        const logsData = window.getKeywordToolLogs();
+        console.log('=== 关键词工具日志 ===', logsData);
+
+        // 创建日志窗口
+        const logWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
+        logWindow.document.write(`
+            <html>
+            <head>
+                <title>关键词工具日志</title>
+                <style>
+                    body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+                    .summary { background: white; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+                    .log-entry { background: white; margin: 10px 0; padding: 10px; border-radius: 4px; border-left: 4px solid #667eea; }
+                    .timestamp { color: #666; font-size: 12px; }
+                    .action { font-weight: bold; color: #333; }
+                    .details { color: #555; margin-top: 5px; }
+                </style>
+            </head>
+            <body>
+                <h1>关键词工具日志</h1>
+                <div class="summary">
+                    <h2>性能摘要</h2>
+                    <p>会话ID: ${logsData.sessionId}</p>
+                    <p>总日志数: ${logsData.summary.totalLogs}</p>
+                    <p>API调用数: ${logsData.summary.apiCalls.length}</p>
+                    <p>文件操作数: ${logsData.summary.fileOperations.length}</p>
+                    <p>总耗时: ${logsData.summary.totalTime ? Math.round(logsData.summary.totalTime / 1000) + '秒' : '进行中'}</p>
+                </div>
+                <div class="logs">
+                    ${logsData.logs.slice(-50).map(log => `
+                        <div class="log-entry">
+                            <div class="timestamp">${new Date(log.timestamp).toLocaleString()}</div>
+                            <div class="action">${log.action}</div>
+                            <div class="details">${JSON.stringify(log.details, null, 2)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </body>
+            </html>
+        `);
+        logWindow.document.close();
+
+        this.showNotification('日志已在新窗口中打开', 'info');
+    }
+
+    // 导出日志
+    exportLogs() {
+        window.exportKeywordToolLogs();
+        this.showNotification('日志已导出', 'success');
+    }
+
+    // 清空日志
+    clearLogs() {
+        if (confirm('确定要清空所有日志吗？')) {
+            this.clearPreviousLogs();
+            this.showNotification('日志已清空', 'info');
+        }
     }
 }
 
