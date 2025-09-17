@@ -6,6 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Chrome browser extension for SEO keyword processing that converts from a web version to a decentralized extension. It processes XLSX files containing keyword data, performs translation using DeepSeek API, calculates Kdroi (ROI), and generates platform-specific links. The extension features an innovative **Keyword Ocean Architecture** that breaks file boundaries for optimized concurrent processing, achieving up to 77% performance improvement.
 
+## Quick Start
+
+### Extension Installation
+```bash
+# Chrome Extension Management
+chrome://extensions/
+# Enable Developer Mode → Load unpacked → Select project folder
+```
+
+### Development Workflow
+- **No build process**: Pure Chrome extension, no npm/package.json
+- **Debugging**: Use Chrome DevTools "Inspect" on extension popup or window
+- **Testing**: Manual testing with sample XLSX files
+- **Live reload**: Reload extension in chrome://extensions/ after code changes
+
 ## Architecture
 
 ### Core Components
@@ -59,6 +74,12 @@ chrome://extensions/
 - Chrome DevTools debugging via extension popup "Inspect" option
 - Console logging throughout for debugging
 
+### Debugging
+- **Extension Console**: Right-click extension icon → "Inspect" → Console tab
+- **Window Console**: Open standalone window → Right-click → "Inspect" → Console tab
+- **Performance Logs**: Built-in performance logging system with export functionality
+- **API Issues**: Check network requests in DevTools Network tab
+
 ### File Processing Test
 1. Create test XLSX with columns: Keyword, Intent, Volume, Keyword Difficulty, CPC (USD)
 2. Test drag & drop upload with multiple files
@@ -85,7 +106,7 @@ chrome://extensions/
 - `reconstructFileData()`: Reconstruct original file structure with processed data
 
 ### Concurrency & Performance
-- **BATCH_SIZE**: 80 keywords per batch
+- **BATCH_SIZE**: 20 keywords per batch (optimized for long-tail keywords)
 - **CONCURRENCY_LIMIT**: 25 concurrent API requests
 - **REQUEST_TIMEOUT**: 30 seconds per request
 - **MAX_RETRIES**: 2 retry attempts per failed request
@@ -93,7 +114,7 @@ chrome://extensions/
 
 ### API Integration
 - **Endpoint**: Configurable DeepSeek Chat Completions API
-- **Batching**: 80 keywords per batch with 25 concurrent requests
+- **Batching**: 20 keywords per batch with 25 concurrent requests
 - **Error Handling**: Retry logic with exponential backoff
 - **Rate Limiting**: Built-in delays between retries
 - **Timeout Handling**: 30-second timeout with abort controller
@@ -178,6 +199,13 @@ API configuration stored in Chrome local storage:
 - **Memory Usage**: Peak memory during processing
 - **API Success Rate**: Successful translations / total attempts
 
+### Performance Logging System
+- **Built-in Metrics**: Real-time performance logging with memory usage tracking
+- **Session Tracking**: Each processing session has unique ID for analysis
+- **Export Functionality**: Performance logs can be exported for analysis
+- **Time Markers**: Detailed timing for each processing phase
+- **Console Integration**: All performance data logged to console for debugging
+
 ## Technical Documentation
 
 ### Detailed Architecture
@@ -186,3 +214,17 @@ API configuration stored in Chrome local storage:
 
 ### Testing and Validation
 - `测试说明.md`: Chinese testing instructions and guidelines
+
+## Current Development Status
+
+### Recent Changes (v5.0)
+- **Keyword Ocean Architecture**: Implemented file-boundary-breaking concurrent processing
+- **Batch Size Optimization**: Reduced from 80 to 20 keywords per batch for better long-tail keyword handling
+- **Performance Logging**: Added comprehensive performance tracking and export functionality
+- **Independent Window**: Removed popup/sidepanel interfaces in favor of 700x900px standalone window
+- **CSP Compliance**: Fixed Content Security Policy issues by using local jszip.min.js
+
+### Known Issues
+- **Batch Size Discrepancy**: Documentation mentions 80 keywords/batch, code uses 20 keywords/batch
+- **File Size Limits**: Large files may cause memory issues (processed in chunks)
+- **API Rate Limits**: DeepSeek API may have rate limits that affect processing speed
