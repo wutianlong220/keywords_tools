@@ -342,10 +342,10 @@
         <div class="section">
             <h2>📤 文件上传</h2>
             <div class="upload-area" id="uploadArea">
-                <p>📁 拖拽XLSX文件到此处或点击选择文件</p>
-                <p style="font-size: 12px; color: #666; margin-top: 5px;">支持批量上传多个文件</p>
+                <p>📁 拖拽XLSX/CSV文件到此处或点击选择文件</p>
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">支持批量上传多个文件（XLSX、XLS、CSV）</p>
             </div>
-            <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls" multiple>
+            <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls,.csv" multiple>
         </div>
 
         <div class="section">
@@ -364,7 +364,8 @@
         <div class="section">
             <h2>📥 操作</h2>
             <button class="btn" id="processBtn" disabled>开始处理</button>
-            <button class="btn" id="downloadBtn" disabled>下载合并文件</button>
+            <button class="btn" id="downloadBtn" disabled>下载合并文件(XLSX)</button>
+            <button class="btn" id="exportCsvBtn" disabled>导出CSV</button>
             <button class="btn" id="clearBtn">清空列表</button>
             <button class="btn" id="viewLogsBtn">查看日志</button>
             <button class="btn" id="exportLogsBtn">导出日志</button>

@@ -60,6 +60,9 @@ class KeywordProcessor {
         document.getElementById('downloadBtn').addEventListener('click', this.downloadMergedFile.bind(this));
         document.getElementById('clearBtn').addEventListener('click', this.clearFiles.bind(this));
 
+        // 导出CSV按钮
+        document.getElementById('exportCsvBtn').addEventListener('click', this.exportCSV.bind(this));
+
         // 日志按钮
         document.getElementById('viewLogsBtn').addEventListener('click', this.viewLogs.bind(this));
         document.getElementById('exportLogsBtn').addEventListener('click', this.exportLogs.bind(this));
@@ -290,11 +293,11 @@ class KeywordProcessor {
 
     addFiles(newFiles) {
         const validFiles = newFiles.filter(file =>
-            file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
+            file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')
         );
 
         if (validFiles.length !== newFiles.length) {
-            this.showNotification('只支持.xlsx和.xls文件', 'error');
+            this.showNotification('只支持.xlsx、.xls和.csv文件', 'error');
         }
 
         validFiles.forEach(file => {
@@ -521,8 +524,9 @@ class KeywordProcessor {
 
             console.log(`单词海洋处理完成: 成功${this.processedFiles.length}个文件，${keywordStream.length}个关键词，总耗时${totalTime}ms`);
 
-            // 启用下载按钮
+            // 启用下载按钮和导出CSV按钮
             document.getElementById('downloadBtn').disabled = false;
+            document.getElementById('exportCsvBtn').disabled = false;
 
         } catch (error) {
             this.markTime('处理失败');
@@ -949,6 +953,78 @@ class KeywordProcessor {
         }
     }
 
+    // 导出CSV文件
+    exportCSV() {
+        if (this.processedFiles.length === 0) {
+            this.showNotification('没有可导出的数据', 'error');
+            return;
+        }
+
+        try {
+            // CSV 列顺序与 XLSX 导出一致
+            const csvHeaders = ['Keyword', 'Translation', 'Intent', 'Volume', 'Keyword Difficulty', 'CPC (USD)', 'Kdroi', 'SERP', 'Google Trends', 'Ahrefs Keyword Difficulty Checker'];
+
+            // 收集所有文件的数据行
+            const allRows = [];
+
+            this.processedFiles.forEach(file => {
+                const data = file.data;
+                if (!data || data.length < 2) return;
+
+                const headers = data[0];
+                const rows = data.slice(1);
+
+                // 查找列索引
+                const colIndex = {};
+                csvHeaders.forEach(h => {
+                    const idx = headers.findIndex(header => header && header.toString().trim().toLowerCase() === h.toLowerCase());
+                    colIndex[h] = idx;
+                    if (idx === -1) {
+                        console.warn(`CSV导出: 未找到列 "${h}"，该列将导出空值`);
+                    }
+                });
+
+                rows.forEach(row => {
+                    const csvRow = csvHeaders.map(h => {
+                        const value = colIndex[h] !== -1 && colIndex[h] < row.length ? row[colIndex[h]] : '';
+                        return this.formatCSVField(value);
+                    });
+                    allRows.push(csvRow.join(','));
+                });
+            });
+
+            // 组装 CSV 内容，UTF-8 with BOM
+            const bom = '\uFEFF';
+            const csvContent = bom + csvHeaders.map(h => this.formatCSVField(h)).join(',') + '\n' + allRows.join('\n');
+
+            // 下载文件
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const today = new Date().toISOString().split('T')[0];
+            a.href = url;
+            a.download = `关键词分析结果_${today}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            this.showNotification('CSV导出成功', 'success');
+        } catch (error) {
+            console.error('导出CSV失败:', error);
+            this.showNotification('导出CSV失败', 'error');
+        }
+    }
+
+    // 格式化CSV字段
+    formatCSVField(value) {
+        if (value === null || value === undefined) return '';
+        const str = String(value);
+        // 包含逗号、引号或换行的字段需要用引号包裹
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+    }
+
     extractWordRoot(filename) {
         // 从文件名中提取词根：去掉 _broad-match_ 及其后面的所有内容
         const name = filename.replace(/\.[^/.]+$/, '');
@@ -965,6 +1041,7 @@ class KeywordProcessor {
         this.updateFileList();
         this.updateProcessButton();
         document.getElementById('downloadBtn').disabled = true;
+        document.getElementById('exportCsvBtn').disabled = true;
         document.getElementById('progressBar').style.width = '0%';
         document.getElementById('progressText').textContent = '等待上传文件...';
     }
@@ -1155,9 +1232,32 @@ class KeywordProcessor {
 
     // 为单词海洋处理单个文件
     async processFileForOcean(file) {
+        const fileName = file.name.toLowerCase();
+
+        if (fileName.endsWith('.csv')) {
+            // CSV 文件：以文本方式读取，SheetJS 自动识别
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const text = e.target.result;
+                        const workbook = XLSX.read(text, { type: 'string' });
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                        resolve(jsonData);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = () => reject(new Error('文件读取失败'));
+                reader.readAsText(file, 'UTF-8');
+            });
+        }
+
+        // XLSX/XLS 文件：以二进制方式读取
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
-
             reader.onload = (e) => {
                 try {
                     const data = new Uint8Array(e.target.result);
@@ -1170,7 +1270,6 @@ class KeywordProcessor {
                     reject(error);
                 }
             };
-
             reader.onerror = () => reject(new Error('文件读取失败'));
             reader.readAsArrayBuffer(file);
         });
